@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Maker Autotile Editor - JSON Import</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #3498db;
+        }
+
+        .import-section {
+            background: #e74c3c;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .import-section h2 {
+            margin-bottom: 10px;
+            color: white;
+        }
+
+        .import-section input[type="file"] {
+            padding: 10px 20px;
+            background: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .spritesheet-section {
+            background: #9b59b6;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .spritesheet-section h2 {
+            margin-bottom: 15px;
+            color: white;
+            text-align: center;
+        }
+
+        .spritesheet-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .spritesheet-controls input[type="file"] {
+            padding: 10px 20px;
+            background: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .spritesheet-preview-container {
+            margin-top: 15px;
+            background: #2c3e50;
+            border-radius: 8px;
+            padding: 15px;
+            display: none;
+        }
+
+        .spritesheet-preview-container.active {
+            display: block;
+        }
+
+        .spritesheet-tiles {
+            display: grid;
+            grid-template-columns: repeat(8, 96px);
+            gap: 10px;
+            justify-content: center;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .spritesheet-tiles {
+                grid-template-columns: repeat(4, 96px);
+            }
+        }
+
+        .spritesheet-tile {
+            width: 96px;
+            height: 144px;
+            border: 3px solid #3498db;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s;
+            background: #1a252f;
+        }
+
+        .spritesheet-tile:hover {
+            border-color: #e74c3c;
+            transform: scale(1.05);
+        }
+
+        .spritesheet-tile.selected {
+            border-color: #2ecc71;
+            box-shadow: 0 0 15px rgba(46, 204, 113, 0.6);
+        }
+
+        .spritesheet-tile canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            pointer-events: none;
+        }
+
+        .spritesheet-tile-index {
+            pointer-events: none;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .spritesheet-tile-assigned {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            background: #2ecc71;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        .assign-hint {
+            text-align: center;
+            margin-top: 10px;
+            color: #bdc3c7;
+            font-size: 12px;
+        }
+
+        .assign-hint strong {
+            color: #3498db;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 20px;
+        }
+
+        .left-panel {
+            flex: 0 0 400px;
+        }
+
+        .tileset-section {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .tileset-section h3 {
+            margin-bottom: 15px;
+            color: #3498db;
+        }
+
+        .tileset-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #2c3e50;
+            border-radius: 4px;
+        }
+
+        .tileset-preview {
+            width: 96px;
+            height: 144px;
+            border: 2px solid #3498db;
+            background: white;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #95a5a6;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .tileset-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .tileset-info {
+            flex: 1;
+        }
+
+        .material-name {
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+
+        .controls {
+            background: #34495e;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        input[type="file"] {
+            padding: 6px;
+            background: #2c3e50;
+            border: 2px solid #3498db;
+            border-radius: 4px;
+            color: #ecf0f1;
+            cursor: pointer;
+            font-size: 11px;
+            width: 100%;
+        }
+
+        .tools {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 16px;
+            background: #3498db;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        button.active {
+            background: #e74c3c;
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.6);
+        }
+
+        button.material-btn {
+            background: #27ae60;
+        }
+
+        button.material-btn:hover {
+            background: #229954;
+        }
+
+        button.material-btn.active {
+            background: #e74c3c;
+        }
+
+        .canvas-container {
+            background: #34495e;
+            padding: 20px;
+            border-radius: 8px;
+            flex: 1;
+            overflow: hidden;
+            max-height: calc(100vh - 200px);
+            position: relative;
+        }
+
+        canvas {
+            border: 2px solid #3498db;
+            background: white;
+            cursor: grab;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        canvas.panning {
+            cursor: grabbing;
+        }
+
+        .canvas-controls {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(52, 73, 94, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #3498db;
+            z-index: 10;
+        }
+
+        .canvas-controls label {
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+
+        .canvas-controls input[type="range"] {
+            width: 150px;
+        }
+
+        .zoom-info {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #3498db;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 RPG Maker Autotile Editor</h1>
+
+        <div class="import-section">
+            <h2>📥 Importar Mapa JSON</h2>
+            <input type="file" id="jsonInput" accept=".json">
+        </div>
+
+        <div class="spritesheet-section">
+            <h2>🖼️ Cargar Spritesheet de Tilesets</h2>
+            <div class="spritesheet-controls">
+                <input type="file" id="spritesheetInput" accept="image/*">
+                <span style="color: #ecf0f1; font-size: 13px;">Cada tileset: 96x144px</span>
+            </div>
+            <div class="spritesheet-preview-container" id="spritesheetPreview">
+                <div class="assign-hint">
+                    Seleccioná un material de la lista, luego hacé click en un tileset para asignarlo
+                </div>
+                <div class="spritesheet-tiles" id="spritesheetTiles"></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="left-panel">
+                <div class="tileset-section">
+                    <h3>Materiales y Tilesets Asignados</h3>
+                    <div id="tilesetList">
+                        <div class="empty-state">
+                            Importá un JSON para ver los materiales
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls" id="toolsSection" style="display: none;">
+                    <h3 style="margin-bottom: 15px; color: #3498db;">Herramientas</h3>
+                    <div class="tools" id="materialButtons"></div>
+
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #2c3e50;">
+                        <h4 style="margin-bottom: 10px; color: #3498db;">Escalar Tilemap</h4>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <label style="margin: 0;">Factor:</label>
+                            <input type="number" id="scaleInput" value="2" min="2" max="10"
+                                style="width: 60px; padding: 5px;">
+                            <button onclick="scaleTilemap()" style="background: #9b59b6;">🔍 Escalar</button>
+                        </div>
+                        <div style="margin-top: 5px; font-size: 11px; color: #95a5a6;">
+                            Escala el mapa usando nearest neighbor
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="canvas-container">
+                <div class="canvas-controls">
+                    <label>Tamaño de Tile:</label>
+                    <input type="range" id="tileSizeSlider" min="12" max="96" value="48" step="4">
+                    <div class="zoom-info">
+                        <span id="tileSizeDisplay">48px</span> |
+                        Zoom: <span id="zoomDisplay">100%</span>
+                    </div>
+                </div>
+                <canvas id="mapCanvas"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let gridWidth = 0;
+        let gridHeight = 0;
+        let tileSize = 48;
+        let grid = [];
+        let tilesets = {};
+        let materials = [];
+        let currentMaterial = 0;
+        let isDrawing = false;
+        let isPanning = false;
+        let jsonData = null;
+        let materialUnderlays = {}; // { materialNumber: { enabled: bool, tilesetIndex: number } }
+
+        // Spritesheet
+        let spritesheetImage = null;
+        let spritesheetTilesets = []; // Array de {canvas, index, col, row}
+        const TILESET_WIDTH = 96;
+        const TILESET_HEIGHT = 144;
+
+        // Camera controls
+        let camera = {
+            x: 0,
+            y: 0,
+            zoom: 1,
+            startX: 0,
+            startY: 0,
+            dragStartX: 0,
+            dragStartY: 0
+        };
+
+        function log(msg) {
+            console.log(`[AutoTiler] ${msg}`);
+        }
+
+        function detectMaterials(materialsArray) {
+            const uniqueMaterials = new Set();
+            for (const row of materialsArray) {
+                for (const val of row) {
+                    uniqueMaterials.add(val);
+                }
+            }
+            return Array.from(uniqueMaterials).sort((a, b) => a - b);
+        }
+
+        function loadJSON(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    jsonData = JSON.parse(event.target.result);
+
+                    if (!jsonData.materials || !Array.isArray(jsonData.materials)) {
+                        log('ERROR: JSON inválido - falta array "materials"');
+                        return;
+                    }
+
+                    gridHeight = jsonData.materials.length;
+                    gridWidth = jsonData.materials[0].length;
+                    grid = jsonData.materials;
+
+                    materials = detectMaterials(jsonData.materials);
+
+                    log(`JSON importado: ${gridWidth}x${gridHeight} con ${materials.length} materiales`);
+                    log(`Materiales detectados: ${materials.join(', ')}`);
+
+                    createTilesetUI();
+                    initCanvas();
+                    render();
+
+                } catch (error) {
+                    log(`ERROR al parsear JSON: ${error.message}`);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function createTilesetUI() {
+            const tilesetList = document.getElementById('tilesetList');
+            const materialButtons = document.getElementById('materialButtons');
+            const toolsSection = document.getElementById('toolsSection');
+
+            tilesetList.innerHTML = '';
+            materialButtons.innerHTML = '';
+            toolsSection.style.display = 'block';
+
+            materials.forEach(matNum => {
+                const matDef = jsonData.materialDefinitions?.find(m => m.materialNumber === matNum);
+                const matName = matDef ? matDef.name : `Material ${matNum}`;
+                const matColor = matDef ? matDef.color : '#999';
+
+                const row = document.createElement('div');
+                row.className = 'tileset-row';
+                row.innerHTML = `
+                    <div class="tileset-preview" id="preview${matNum}">Sin asignar</div>
+                    <div class="tileset-info">
+                        <div class="material-name" style="color: ${matColor}">
+                            ${matName} (${matNum})
+                        </div>
+                        <div style="font-size: 11px; color: #95a5a6; margin-top: 5px;">
+                            Asigná un tileset desde el spritesheet
+                        </div>
+                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #34495e;">
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #ecf0f1; cursor: pointer;">
+                                <input type="checkbox" id="underlay-check-${matNum}" style="width: auto; cursor: pointer;">
+                                <span>Usar tileset base (transparencia)</span>
+                            </label>
+                            <div id="underlay-input-container-${matNum}" style="display: none; margin-top: 6px; margin-left: 20px;">
+                                <label style="font-size: 10px; color: #95a5a6; display: block; margin-bottom: 3px;">
+                                    Índice del tileset base:
+                                </label>
+                                <input type="number" id="underlay-index-${matNum}" min="0" 
+                                    placeholder="Ej: 0" 
+                                    style="width: 80px; padding: 4px; font-size: 11px; background: #1a252f; border: 1px solid #3498db; border-radius: 3px; color: #ecf0f1;">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                tilesetList.appendChild(row);
+
+                // Event listeners para underlay
+                const checkbox = document.getElementById(`underlay-check-${matNum}`);
+                const inputContainer = document.getElementById(`underlay-input-container-${matNum}`);
+                const indexInput = document.getElementById(`underlay-index-${matNum}`);
+
+                checkbox.addEventListener('change', (e) => {
+                    const isEnabled = e.target.checked;
+                    inputContainer.style.display = isEnabled ? 'block' : 'none';
+
+                    if (!materialUnderlays[matNum]) {
+                        materialUnderlays[matNum] = { enabled: false, tilesetIndex: null };
+                    }
+                    materialUnderlays[matNum].enabled = isEnabled;
+
+                    if (!isEnabled) {
+                        materialUnderlays[matNum].tilesetIndex = null;
+                    }
+
+                    log(`Underlay ${isEnabled ? 'activado' : 'desactivado'} para material ${matNum}`);
+                    render();
+                });
+
+                indexInput.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    if (!materialUnderlays[matNum]) {
+                        materialUnderlays[matNum] = { enabled: false, tilesetIndex: null };
+                    }
+
+                    if (!isNaN(value) && value >= 0 && value < spritesheetTilesets.length) {
+                        materialUnderlays[matNum].tilesetIndex = value;
+                        log(`Tileset base #${value} asignado a material ${matNum}`);
+                        render();
+                    } else if (e.target.value === '') {
+                        materialUnderlays[matNum].tilesetIndex = null;
+                        render();
+                    }
+                });
+
+                const btn = document.createElement('button');
+                btn.className = 'material-btn';
+                btn.id = `mat${matNum}Btn`;
+                btn.textContent = `${matName} (${matNum})`;
+                btn.style.background = matColor;
+                btn.onclick = () => selectMaterial(matNum);
+                materialButtons.appendChild(btn);
+            });
+
+            if (materials.length > 0) {
+                currentMaterial = materials[0];
+                updateMaterialButtons();
+            }
+        }
+
+
+        function selectMaterial(matNum) {
+            console.log('selectMaterial llamado con:', matNum);
+            currentMaterial = matNum;
+            console.log('currentMaterial actualizado a:', currentMaterial);
+            updateMaterialButtons();
+            log(`Material seleccionado: ${matNum}`);
+        }
+
+        function updateMaterialButtons() {
+            materials.forEach(matNum => {
+                const btn = document.getElementById(`mat${matNum}Btn`);
+                if (btn) {
+                    btn.classList.toggle('active', matNum === currentMaterial);
+                }
+            });
+
+            // Actualizar hint del spritesheet
+            const hint = document.querySelector('.assign-hint');
+            if (hint && materials.length > 0) {
+                const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === currentMaterial);
+                const matName = matDef ? matDef.name : `Material ${currentMaterial}`;
+                hint.innerHTML = `Material seleccionado: <strong>${matName} (${currentMaterial})</strong> - Hacé click en un tileset para asignarlo`;
+            }
+        }
+
+        function initCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = gridWidth * tileSize;
+            canvas.height = gridHeight * tileSize;
+
+            // Center camera
+            camera.x = 0;
+            camera.y = 0;
+            camera.zoom = 1;
+
+            updateZoomDisplay();
+        }
+
+        function updateZoomDisplay() {
+            document.getElementById('zoomDisplay').textContent = Math.round(camera.zoom * 100) + '%';
+        }
+
+        function screenToWorld(screenX, screenY) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (screenX - rect.left - camera.x) / camera.zoom;
+            const y = (screenY - rect.top - camera.y) / camera.zoom;
+            return { x, y };
+        }
+
+        function worldToGrid(worldX, worldY) {
+            return {
+                x: Math.floor(worldX / tileSize),
+                y: Math.floor(worldY / tileSize)
+            };
+        }
+
+        function isFilled(x, y, matNum) {
+            if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
+            return grid[y][x] === matNum;
+        }
+
+        function getSubtileCoords(x, y, corner, matNum) {
+            const N = isFilled(x, y - 1, matNum);
+            const S = isFilled(x, y + 1, matNum);
+            const E = isFilled(x + 1, y, matNum);
+            const W = isFilled(x - 1, y, matNum);
+
+            const NW_diag = isFilled(x - 1, y - 1, matNum);
+            const NE_diag = isFilled(x + 1, y - 1, matNum);
+            const SW_diag = isFilled(x - 1, y + 1, matNum);
+            const SE_diag = isFilled(x + 1, y + 1, matNum);
+
+            if (!N && !S && !E && !W) {
+                const map = { NW: { x: 0, y: 0 }, NE: { x: 1, y: 0 }, SW: { x: 0, y: 1 }, SE: { x: 1, y: 1 } };
+                return map[corner];
+            }
+
+            switch (corner) {
+                case 'NW':
+                    if (N && W) {
+                        if (NW_diag) return { x: 1, y: 3 };
+                        else return { x: 2, y: 0 };
+                    }
+                    if (N && !W) return { x: 0, y: 4 };
+                    if (!N && W) return { x: 2, y: 2 };
+                    return { x: 0, y: 0 };
+
+                case 'NE':
+                    if (N && E) {
+                        if (NE_diag) return { x: 2, y: 3 };
+                        else return { x: 3, y: 0 };
+                    }
+                    if (N && !E) return { x: 3, y: 4 };
+                    if (!N && E) return { x: 2, y: 2 };
+                    return { x: 1, y: 0 };
+
+                case 'SW':
+                    if (S && W) {
+                        if (SW_diag) return { x: 1, y: 4 };
+                        else return { x: 2, y: 1 };
+                    }
+                    if (S && !W) return { x: 0, y: 4 };
+                    if (!S && W) return { x: 2, y: 5 };
+                    return { x: 0, y: 1 };
+
+                case 'SE':
+                    if (S && E) {
+                        if (SE_diag) return { x: 2, y: 4 };
+                        else return { x: 3, y: 1 };
+                    }
+                    if (S && !E) return { x: 3, y: 4 };
+                    if (!S && E) return { x: 2, y: 5 };
+                    return { x: 1, y: 1 };
+            }
+
+            return { x: 0, y: 0 };
+        }
+
+        function drawTile(x, y) {
+            const matNum = grid[y][x];
+            const tileset = tilesets[matNum];
+
+            if (!tileset) return;
+
+            const halfTile = tileSize / 2;
+            const subtileSize = 24;
+
+            const positions = {
+                NW: { dx: x * tileSize, dy: y * tileSize },
+                NE: { dx: x * tileSize + halfTile, dy: y * tileSize },
+                SW: { dx: x * tileSize, dy: y * tileSize + halfTile },
+                SE: { dx: x * tileSize + halfTile, dy: y * tileSize + halfTile }
+            };
+
+            // Dibujar tileset base (underlay) si está configurado
+            const underlayConfig = materialUnderlays[matNum];
+            if (underlayConfig && underlayConfig.enabled && underlayConfig.tilesetIndex !== null) {
+                const underlayTileset = spritesheetTilesets[underlayConfig.tilesetIndex];
+                if (underlayTileset && underlayTileset.canvas) {
+                    for (const corner of ['NW', 'NE', 'SW', 'SE']) {
+                        const srcPos = getSubtileCoords(x, y, corner, matNum);
+
+                        ctx.drawImage(
+                            underlayTileset.canvas,
+                            srcPos.x * subtileSize,
+                            srcPos.y * subtileSize,
+                            subtileSize,
+                            subtileSize,
+                            positions[corner].dx,
+                            positions[corner].dy,
+                            halfTile,
+                            halfTile
+                        );
+                    }
+                }
+            }
+
+            // Dibujar tileset principal encima
+            for (const corner of ['NW', 'NE', 'SW', 'SE']) {
+                const srcPos = getSubtileCoords(x, y, corner, matNum);
+
+                ctx.drawImage(
+                    tileset,
+                    srcPos.x * subtileSize,
+                    srcPos.y * subtileSize,
+                    subtileSize,
+                    subtileSize,
+                    positions[corner].dx,
+                    positions[corner].dy,
+                    halfTile,
+                    halfTile
+                );
+            }
+        }
+
+        function render() {
+            if (!grid || grid.length === 0) return;
+
+            // Clear and setup transform
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.fillStyle = '#f0e68c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Apply camera transform
+            ctx.setTransform(camera.zoom, 0, 0, camera.zoom, camera.x, camera.y);
+
+            // Calculate visible area
+            const startX = Math.max(0, Math.floor(-camera.x / camera.zoom / tileSize));
+            const startY = Math.max(0, Math.floor(-camera.y / camera.zoom / tileSize));
+            const endX = Math.min(gridWidth, Math.ceil((canvas.width - camera.x) / camera.zoom / tileSize));
+            const endY = Math.min(gridHeight, Math.ceil((canvas.height - camera.y) / camera.zoom / tileSize));
+
+            // Draw grid
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 0.5 / camera.zoom;
+            for (let x = startX; x <= endX; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * tileSize, startY * tileSize);
+                ctx.lineTo(x * tileSize, endY * tileSize);
+                ctx.stroke();
+            }
+            for (let y = startY; y <= endY; y++) {
+                ctx.beginPath();
+                ctx.moveTo(startX * tileSize, y * tileSize);
+                ctx.lineTo(endX * tileSize, y * tileSize);
+                ctx.stroke();
+            }
+
+            // Draw tiles (only visible ones)
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    drawTile(x, y);
+                }
+            }
+
+            // Reset transform
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+
+        function handleCanvasInteraction(e) {
+            if (!grid || grid.length === 0 || isPanning) return;
+
+            const world = screenToWorld(e.clientX, e.clientY);
+            const gridPos = worldToGrid(world.x, world.y);
+
+            if (gridPos.x >= 0 && gridPos.x < gridWidth && gridPos.y >= 0 && gridPos.y < gridHeight) {
+                if (grid[gridPos.y][gridPos.x] !== currentMaterial) {
+                    grid[gridPos.y][gridPos.x] = currentMaterial;
+                    render();
+                }
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 1 || e.button === 2 || e.shiftKey) {
+                // Middle mouse or right click or shift+left = pan
+                isPanning = true;
+                canvas.classList.add('panning');
+                camera.dragStartX = e.clientX;
+                camera.dragStartY = e.clientY;
+                camera.startX = camera.x;
+                camera.startY = camera.y;
+                e.preventDefault();
+            } else if (e.button === 0) {
+                // Left click = draw
+                isDrawing = true;
+                handleCanvasInteraction(e);
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                const dx = e.clientX - camera.dragStartX;
+                const dy = e.clientY - camera.dragStartY;
+                camera.x = camera.startX + dx;
+                camera.y = camera.startY + dy;
+                render();
+            } else if (isDrawing) {
+                handleCanvasInteraction(e);
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            isDrawing = false;
+            isPanning = false;
+            canvas.classList.remove('panning');
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDrawing = false;
+            isPanning = false;
+            canvas.classList.remove('panning');
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // World position before zoom
+            const worldX = (mouseX - camera.x) / camera.zoom;
+            const worldY = (mouseY - camera.y) / camera.zoom;
+
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.min(Math.max(camera.zoom * zoomFactor, 0.1), 5);
+
+            // Adjust camera to keep world position under mouse
+            camera.x = mouseX - worldX * newZoom;
+            camera.y = mouseY - worldY * newZoom;
+            camera.zoom = newZoom;
+
+            updateZoomDisplay();
+            render();
+        });
+
+        // Tile size slider
+        document.getElementById('tileSizeSlider').addEventListener('input', (e) => {
+            tileSize = parseInt(e.target.value);
+            document.getElementById('tileSizeDisplay').textContent = tileSize + 'px';
+            canvas.width = gridWidth * tileSize;
+            canvas.height = gridHeight * tileSize;
+            render();
+        });
+
+        function scaleTilemap() {
+            if (!grid || grid.length === 0) {
+                log('ERROR: No hay mapa cargado para escalar');
+                return;
+            }
+
+            const scale = parseInt(document.getElementById('scaleInput').value);
+            if (scale < 2 || scale > 10) {
+                log('ERROR: El factor de escala debe estar entre 2 y 10');
+                return;
+            }
+
+            const oldWidth = gridWidth;
+            const oldHeight = gridHeight;
+
+            const h = grid.length;
+            const w = grid[0].length;
+            const out = [];
+
+            for (let y = 0; y < h; y++) {
+                for (let sy = 0; sy < scale; sy++) {
+                    const row = [];
+                    for (let x = 0; x < w; x++) {
+                        for (let sx = 0; sx < scale; sx++) {
+                            row.push(grid[y][x]);
+                        }
+                    }
+                    out.push(row);
+                }
+            }
+
+            grid = out;
+            gridWidth = w * scale;
+            gridHeight = h * scale;
+
+            log(`Tilemap escalado ${scale}x: ${oldWidth}x${oldHeight} → ${gridWidth}x${gridHeight}`);
+
+            initCanvas();
+            render();
+        }
+
+        document.getElementById('jsonInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                loadJSON(e.target.files[0]);
+            }
+        });
+
+        // Spritesheet handling
+        document.getElementById('spritesheetInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                loadSpritesheet(e.target.files[0]);
+            }
+        });
+
+        function loadSpritesheet(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    spritesheetImage = img;
+
+                    const cols = Math.floor(img.width / TILESET_WIDTH);
+                    const rows = Math.floor(img.height / TILESET_HEIGHT);
+                    const totalTilesets = cols * rows;
+
+                    log(`Spritesheet cargado: ${img.width}x${img.height}px = ${cols}x${rows} tilesets (${totalTilesets} total)`);
+
+                    extractTilesetsFromSpritesheet(img, cols, rows);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function extractTilesetsFromSpritesheet(img, cols, rows) {
+            console.log('extractTilesetsFromSpritesheet:', cols, 'x', rows);
+            spritesheetTilesets = [];
+            const container = document.getElementById('spritesheetTiles');
+            const previewContainer = document.getElementById('spritesheetPreview');
+            container.innerHTML = '';
+
+            let index = 0;
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    // Crear canvas para este tileset
+                    const tilesetCanvas = document.createElement('canvas');
+                    tilesetCanvas.width = TILESET_WIDTH;
+                    tilesetCanvas.height = TILESET_HEIGHT;
+                    const tilesetCtx = tilesetCanvas.getContext('2d');
+
+                    // Extraer el tileset del spritesheet
+                    tilesetCtx.drawImage(
+                        img,
+                        col * TILESET_WIDTH,
+                        row * TILESET_HEIGHT,
+                        TILESET_WIDTH,
+                        TILESET_HEIGHT,
+                        0, 0,
+                        TILESET_WIDTH,
+                        TILESET_HEIGHT
+                    );
+
+                    // Guardar referencia
+                    spritesheetTilesets.push({
+                        canvas: tilesetCanvas,
+                        index: index,
+                        col: col,
+                        row: row,
+                        assignedTo: null
+                    });
+
+                    // Crear elemento visual
+                    const tileDiv = document.createElement('div');
+                    tileDiv.className = 'spritesheet-tile';
+                    tileDiv.dataset.index = index;
+
+                    const displayCanvas = document.createElement('canvas');
+                    displayCanvas.width = TILESET_WIDTH;
+                    displayCanvas.height = TILESET_HEIGHT;
+                    displayCanvas.getContext('2d').drawImage(tilesetCanvas, 0, 0);
+                    tileDiv.appendChild(displayCanvas);
+
+                    const indexLabel = document.createElement('div');
+                    indexLabel.className = 'spritesheet-tile-index';
+                    indexLabel.textContent = index;
+                    tileDiv.appendChild(indexLabel);
+
+                    const assignedLabel = document.createElement('div');
+                    assignedLabel.className = 'spritesheet-tile-assigned';
+                    assignedLabel.id = `assigned-${index}`;
+                    assignedLabel.style.display = 'none';
+                    tileDiv.appendChild(assignedLabel);
+
+                    tileDiv.onclick = (e) => {
+                        const idx = parseInt(e.currentTarget.dataset.index);
+                        console.log(`Click en tileset ${idx}`);
+                        assignTilesetToMaterial(idx);
+                    };
+
+                    container.appendChild(tileDiv);
+                    index++;
+                }
+            }
+
+            previewContainer.classList.add('active');
+        }
+
+        function assignTilesetToMaterial(tilesetIndex) {
+            console.log('=== assignTilesetToMaterial ===');
+            console.log('tilesetIndex:', tilesetIndex);
+            console.log('materials:', materials);
+            console.log('currentMaterial:', currentMaterial);
+
+            if (materials.length === 0) {
+                console.log('ERROR: No hay materiales');
+                log('ERROR: Primero importá un JSON con materiales');
+                return;
+            }
+
+            const tileset = spritesheetTilesets[tilesetIndex];
+            console.log('tileset encontrado:', tileset);
+            if (!tileset) {
+                console.log('ERROR: tileset no encontrado');
+                return;
+            }
+
+            // Desasignar de material anterior si existía
+            if (tileset.assignedTo !== null) {
+                console.log('Desasignando de material anterior:', tileset.assignedTo);
+                delete tilesets[tileset.assignedTo];
+            }
+
+            // Si ya había otro tileset asignado a este material, desasignarlo
+            const previousTileset = spritesheetTilesets.find(t => t.assignedTo === currentMaterial);
+            if (previousTileset && previousTileset.index !== tilesetIndex) {
+                console.log('Desasignando tileset anterior del material actual:', previousTileset.index);
+                previousTileset.assignedTo = null;
+                const prevLabel = document.getElementById(`assigned-${previousTileset.index}`);
+                if (prevLabel) prevLabel.style.display = 'none';
+                document.querySelector(`.spritesheet-tile[data-index="${previousTileset.index}"]`)?.classList.remove('selected');
+            }
+
+            // Asignar nuevo - usar el canvas directamente (drawImage acepta canvas)
+            console.log('Asignando tileset.canvas a tilesets[' + currentMaterial + ']');
+            tileset.assignedTo = currentMaterial;
+            tilesets[currentMaterial] = tileset.canvas;
+            console.log('tilesets después de asignar:', tilesets);
+
+            // Actualizar UI
+            const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
+            console.log('assignedLabel:', assignedLabel);
+            if (assignedLabel) {
+                const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === currentMaterial);
+                const matName = matDef ? matDef.name : `Mat ${currentMaterial}`;
+                console.log('Actualizando label con:', matName);
+                assignedLabel.textContent = matName;
+                assignedLabel.style.display = 'block';
+            }
+
+            // Marcar como seleccionado
+            console.log('Marcando tile como seleccionado');
+            document.querySelectorAll('.spritesheet-tile').forEach(el => {
+                if (parseInt(el.dataset.index) === tilesetIndex) {
+                    el.classList.add('selected');
+                    console.log('Tile seleccionado:', el);
+                }
+            });
+
+            // Actualizar preview en la lista de materiales
+            const preview = document.getElementById(`preview${currentMaterial}`);
+            console.log('preview element:', preview);
+            if (preview) {
+                preview.innerHTML = '';
+                const previewCanvas = document.createElement('canvas');
+                previewCanvas.width = TILESET_WIDTH;
+                previewCanvas.height = TILESET_HEIGHT;
+                previewCanvas.style.width = '100%';
+                previewCanvas.style.height = '100%';
+                previewCanvas.getContext('2d').drawImage(tileset.canvas, 0, 0);
+                preview.appendChild(previewCanvas);
+                console.log('Preview actualizado');
+            }
+
+            log(`Tileset #${tilesetIndex} asignado a material ${currentMaterial}`);
+            console.log('Llamando a render()...');
+            render();
+            console.log('=== FIN assignTilesetToMaterial ===');
+        }
+
+        log('Editor iniciado');
+    </script>
+</body>
+</html>

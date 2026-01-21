@@ -1,0 +1,147 @@
+{
+    "type": "rpgmaker_autotile",
+    "variant": "A2",
+    "tileSize": 48,
+    "sourceLayout": {
+        "columns": 2,
+        "rows": 3,
+        "subtilesPerTile": 4
+    },
+    "subtiles": {
+        "NW": 0,
+        "NE": 1,
+        "SW": 2,
+        "SE": 3
+    },
+    "rules": [
+        {
+            "name": "isolated",
+            "neighbors": {
+                "N": false,
+                "S": false,
+                "E": false,
+                "W": false
+            },
+            "tile": {
+                "NW": "inner",
+                "NE": "inner",
+                "SW": "inner",
+                "SE": "inner"
+            }
+        },
+        {
+            "name": "center",
+            "neighbors": {
+                "N": true,
+                "S": true,
+                "E": true,
+                "W": true
+            },
+            "tile": {
+                "NW": "center",
+                "NE": "center",
+                "SW": "center",
+                "SE": "center"
+            }
+        },
+        {
+            "name": "vertical",
+            "neighbors": {
+                "N": true,
+                "S": true,
+                "E": false,
+                "W": false
+            },
+            "tile": {
+                "NW": "edgeW",
+                "NE": "edgeE",
+                "SW": "edgeW",
+                "SE": "edgeE"
+            }
+        },
+        {
+            "name": "horizontal",
+            "neighbors": {
+                "N": false,
+                "S": false,
+                "E": true,
+                "W": true
+            },
+            "tile": {
+                "NW": "edgeN",
+                "NE": "edgeN",
+                "SW": "edgeS",
+                "SE": "edgeS"
+            }
+        },
+        {
+            "name": "corner_NE",
+            "neighbors": {
+                "N": true,
+                "E": true,
+                "S": false,
+                "W": false
+            },
+            "tile": {
+                "NW": "edgeW",
+                "NE": "inner",
+                "SW": "outer",
+                "SE": "edgeS"
+            }
+        },
+        {
+            "name": "corner_NW",
+            "neighbors": {
+                "N": true,
+                "W": true,
+                "S": false,
+                "E": false
+            },
+            "tile": {
+                "NW": "inner",
+                "NE": "edgeE",
+                "SW": "edgeS",
+                "SE": "outer"
+            }
+        },
+        {
+            "name": "corner_SE",
+            "neighbors": {
+                "S": true,
+                "E": true,
+                "N": false,
+                "W": false
+            },
+            "tile": {
+                "NW": "outer",
+                "NE": "edgeN",
+                "SW": "edgeW",
+                "SE": "inner"
+            }
+        },
+        {
+            "name": "corner_SW",
+            "neighbors": {
+                "S": true,
+                "W": true,
+                "N": false,
+                "E": false
+            },
+            "tile": {
+                "NW": "edgeN",
+                "NE": "outer",
+                "SW": "inner",
+                "SE": "edgeE"
+            }
+        }
+    ],
+    "legend": {
+        "center": "interior",
+        "edgeN": "borde_norte",
+        "edgeS": "borde_sur",
+        "edgeE": "borde_este",
+        "edgeW": "borde_oeste",
+        "inner": "esquina_interna",
+        "outer": "esquina_externa"
+    }
+}
