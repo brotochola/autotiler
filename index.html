@@ -206,6 +206,13 @@
             padding: 10px;
             background: #2c3e50;
             border-radius: 4px;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tileset-row:hover {
+            background: #34495e;
+            border-color: #3498db;
         }
 
         .tileset-preview {
@@ -436,17 +443,28 @@
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
 
-        let gridWidth = 0;
-        let gridHeight = 0;
+        let gridWidth = 10;
+        let gridHeight = 10;
         let tileSize = 48;
         let grid = [];
-        let tilesets = {};
-        let materials = [];
+
+        let tilesets = {};  // { materialNumber: canvas } - tilesets "puros"
+        let transitionTilesets = {};  // { fromMaterial: { toMaterial: canvas } } - tilesets de transición
+        let materials = [0]; // Start with material 0
         let currentMaterial = 0;
+        let currentTransition = null; // { from: number, to: number } - transición seleccionada para asignar
         let isDrawing = false;
         let isPanning = false;
         let jsonData = null;
         let materialUnderlays = {}; // { materialNumber: { enabled: bool, tilesetIndex: number } }
+
+        // Initialize default 10x10 grid with material 0
+        for (let y = 0; y < gridHeight; y++) {
+            grid[y] = [];
+            for (let x = 0; x < gridWidth; x++) {
+                grid[y][x] = 0;
+            }
+        }
 
         // Spritesheet
         let spritesheetImage = null;
@@ -477,6 +495,35 @@
                 }
             }
             return Array.from(uniqueMaterials).sort((a, b) => a - b);
+        }
+
+        // Genera todas las combinaciones de transiciones necesarias
+        // Para N materiales: N*(N-1) transiciones (cada par en ambas direcciones)
+        function generateTransitionPairs(materialsArray) {
+            const pairs = [];
+            for (let i = 0; i < materialsArray.length; i++) {
+                for (let j = 0; j < materialsArray.length; j++) {
+                    if (i !== j) {
+                        pairs.push({
+                            from: materialsArray[i],
+                            to: materialsArray[j]
+                        });
+                    }
+                }
+            }
+            return pairs;
+        }
+
+        // Obtiene el nombre de un material
+        function getMaterialName(matNum) {
+            const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === matNum);
+            return matDef ? matDef.name : `Material ${matNum}`;
+        }
+
+        // Obtiene el color de un material
+        function getMaterialColor(matNum) {
+            const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === matNum);
+            return matDef ? matDef.color : '#999';
         }
 
         function loadJSON(file) {
@@ -519,13 +566,19 @@
             materialButtons.innerHTML = '';
             toolsSection.style.display = 'block';
 
+            // === SECCIÓN 1: Tilesets Puros ===
+            const pureHeader = document.createElement('h4');
+            pureHeader.textContent = '🎨 Tilesets Puros';
+            pureHeader.style.cssText = 'color: #3498db; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #3498db;';
+            tilesetList.appendChild(pureHeader);
+
             materials.forEach(matNum => {
-                const matDef = jsonData.materialDefinitions?.find(m => m.materialNumber === matNum);
-                const matName = matDef ? matDef.name : `Material ${matNum}`;
-                const matColor = matDef ? matDef.color : '#999';
+                const matName = getMaterialName(matNum);
+                const matColor = getMaterialColor(matNum);
 
                 const row = document.createElement('div');
                 row.className = 'tileset-row';
+                row.id = `pure-row-${matNum}`;
                 row.innerHTML = `
                     <div class="tileset-preview" id="preview${matNum}">Sin asignar</div>
                     <div class="tileset-info">
@@ -533,64 +586,15 @@
                             ${matName} (${matNum})
                         </div>
                         <div style="font-size: 11px; color: #95a5a6; margin-top: 5px;">
-                            Asigná un tileset desde el spritesheet
-                        </div>
-                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #34495e;">
-                            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #ecf0f1; cursor: pointer;">
-                                <input type="checkbox" id="underlay-check-${matNum}" style="width: auto; cursor: pointer;">
-                                <span>Usar tileset base (transparencia)</span>
-                            </label>
-                            <div id="underlay-input-container-${matNum}" style="display: none; margin-top: 6px; margin-left: 20px;">
-                                <label style="font-size: 10px; color: #95a5a6; display: block; margin-bottom: 3px;">
-                                    Índice del tileset base:
-                                </label>
-                                <input type="number" id="underlay-index-${matNum}" min="0" 
-                                    placeholder="Ej: 0" 
-                                    style="width: 80px; padding: 4px; font-size: 11px; background: #1a252f; border: 1px solid #3498db; border-radius: 3px; color: #ecf0f1;">
-                            </div>
+                            Click para seleccionar, luego asigná un tileset
                         </div>
                     </div>
                 `;
+                row.style.cursor = 'pointer';
+                row.onclick = () => selectMaterial(matNum);
                 tilesetList.appendChild(row);
 
-                // Event listeners para underlay
-                const checkbox = document.getElementById(`underlay-check-${matNum}`);
-                const inputContainer = document.getElementById(`underlay-input-container-${matNum}`);
-                const indexInput = document.getElementById(`underlay-index-${matNum}`);
-
-                checkbox.addEventListener('change', (e) => {
-                    const isEnabled = e.target.checked;
-                    inputContainer.style.display = isEnabled ? 'block' : 'none';
-
-                    if (!materialUnderlays[matNum]) {
-                        materialUnderlays[matNum] = { enabled: false, tilesetIndex: null };
-                    }
-                    materialUnderlays[matNum].enabled = isEnabled;
-
-                    if (!isEnabled) {
-                        materialUnderlays[matNum].tilesetIndex = null;
-                    }
-
-                    log(`Underlay ${isEnabled ? 'activado' : 'desactivado'} para material ${matNum}`);
-                    render();
-                });
-
-                indexInput.addEventListener('input', (e) => {
-                    const value = parseInt(e.target.value);
-                    if (!materialUnderlays[matNum]) {
-                        materialUnderlays[matNum] = { enabled: false, tilesetIndex: null };
-                    }
-
-                    if (!isNaN(value) && value >= 0 && value < spritesheetTilesets.length) {
-                        materialUnderlays[matNum].tilesetIndex = value;
-                        log(`Tileset base #${value} asignado a material ${matNum}`);
-                        render();
-                    } else if (e.target.value === '') {
-                        materialUnderlays[matNum].tilesetIndex = null;
-                        render();
-                    }
-                });
-
+                // Botón de material para pintar
                 const btn = document.createElement('button');
                 btn.className = 'material-btn';
                 btn.id = `mat${matNum}Btn`;
@@ -600,36 +604,139 @@
                 materialButtons.appendChild(btn);
             });
 
+            // === SECCIÓN 2: Tilesets de Transición ===
+            if (materials.length > 1) {
+                const transHeader = document.createElement('h4');
+                transHeader.textContent = '🔄 Transiciones entre Materiales';
+                transHeader.style.cssText = 'color: #e67e22; margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #e67e22;';
+                tilesetList.appendChild(transHeader);
+
+                const transInfo = document.createElement('div');
+                transInfo.style.cssText = 'font-size: 11px; color: #95a5a6; margin-bottom: 10px; padding: 8px; background: #1a252f; border-radius: 4px;';
+                transInfo.innerHTML = `
+                    <strong>Jerarquía de materiales:</strong> El material con número menor es el "fondo".<br>
+                    Por ejemplo: ${getMaterialName(materials[0])}(${materials[0]}) → ${getMaterialName(materials[1])}(${materials[1]}) 
+                    significa "${getMaterialName(materials[0])} debajo de ${getMaterialName(materials[1])}"
+                `;
+                tilesetList.appendChild(transInfo);
+
+                const pairs = generateTransitionPairs(materials);
+
+                pairs.forEach(pair => {
+                    const fromName = getMaterialName(pair.from);
+                    const toName = getMaterialName(pair.to);
+                    const fromColor = getMaterialColor(pair.from);
+                    const toColor = getMaterialColor(pair.to);
+
+                    const row = document.createElement('div');
+                    row.className = 'tileset-row';
+                    row.id = `trans-row-${pair.from}-${pair.to}`;
+                    row.innerHTML = `
+                        <div class="tileset-preview" id="preview-trans-${pair.from}-${pair.to}">Sin asignar</div>
+                        <div class="tileset-info">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="color: ${fromColor}; font-weight: bold;">${fromName}(${pair.from})</span>
+                                <span style="color: #95a5a6;">→</span>
+                                <span style="color: ${toColor}; font-weight: bold;">${toName}(${pair.to})</span>
+                            </div>
+                            <div style="font-size: 11px; color: #95a5a6; margin-top: 5px;">
+                                ${pair.from < pair.to ? `${fromName} como fondo de ${toName}` : `${fromName} sobre ${toName}`}
+                            </div>
+                        </div>
+                    `;
+                    row.style.cursor = 'pointer';
+                    row.onclick = () => selectTransition(pair.from, pair.to);
+                    tilesetList.appendChild(row);
+
+                    // Inicializar estructura de transición si no existe
+                    if (!transitionTilesets[pair.from]) {
+                        transitionTilesets[pair.from] = {};
+                    }
+                });
+            }
+
             if (materials.length > 0) {
                 currentMaterial = materials[0];
-                updateMaterialButtons();
+                currentTransition = null;
+                updateSelectionUI();
             }
         }
 
 
         function selectMaterial(matNum) {
-            console.log('selectMaterial llamado con:', matNum);
             currentMaterial = matNum;
-            console.log('currentMaterial actualizado a:', currentMaterial);
-            updateMaterialButtons();
-            log(`Material seleccionado: ${matNum}`);
+            currentTransition = null; // Deseleccionar transición
+            updateSelectionUI();
+            log(`Material puro seleccionado: ${matNum}`);
         }
 
-        function updateMaterialButtons() {
+        function selectTransition(fromMat, toMat) {
+            currentTransition = { from: fromMat, to: toMat };
+            currentMaterial = null; // Deseleccionar material puro
+            updateSelectionUI();
+            log(`Transición seleccionada: ${fromMat} → ${toMat}`);
+        }
+
+        function updateSelectionUI() {
+            // Actualizar botones de materiales (para pintar)
             materials.forEach(matNum => {
                 const btn = document.getElementById(`mat${matNum}Btn`);
                 if (btn) {
-                    btn.classList.toggle('active', matNum === currentMaterial);
+                    // Los botones de pintar solo se activan con el material de pintura actual
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Actualizar filas de tilesets puros
+            materials.forEach(matNum => {
+                const row = document.getElementById(`pure-row-${matNum}`);
+                if (row) {
+                    if (currentMaterial === matNum && !currentTransition) {
+                        row.style.background = '#2980b9';
+                        row.style.border = '2px solid #3498db';
+                    } else {
+                        row.style.background = '';
+                        row.style.border = '';
+                    }
+                }
+            });
+
+            // Actualizar filas de transiciones
+            const pairs = generateTransitionPairs(materials);
+            pairs.forEach(pair => {
+                const row = document.getElementById(`trans-row-${pair.from}-${pair.to}`);
+                if (row) {
+                    if (currentTransition &&
+                        currentTransition.from === pair.from &&
+                        currentTransition.to === pair.to) {
+                        row.style.background = '#d35400';
+                        row.style.border = '2px solid #e67e22';
+                    } else {
+                        row.style.background = '';
+                        row.style.border = '';
+                    }
                 }
             });
 
             // Actualizar hint del spritesheet
             const hint = document.querySelector('.assign-hint');
-            if (hint && materials.length > 0) {
-                const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === currentMaterial);
-                const matName = matDef ? matDef.name : `Material ${currentMaterial}`;
-                hint.innerHTML = `Material seleccionado: <strong>${matName} (${currentMaterial})</strong> - Hacé click en un tileset para asignarlo`;
+            if (hint) {
+                if (currentTransition) {
+                    const fromName = getMaterialName(currentTransition.from);
+                    const toName = getMaterialName(currentTransition.to);
+                    hint.innerHTML = `Transición seleccionada: <strong>${fromName}(${currentTransition.from}) → ${toName}(${currentTransition.to})</strong> - Hacé click en un tileset para asignarlo`;
+                } else if (currentMaterial !== null) {
+                    const matName = getMaterialName(currentMaterial);
+                    hint.innerHTML = `Material puro seleccionado: <strong>${matName} (${currentMaterial})</strong> - Hacé click en un tileset para asignarlo`;
+                } else {
+                    hint.innerHTML = `Seleccioná un material o transición de la lista`;
+                }
             }
+        }
+
+        // Mantener compatibilidad con updateMaterialButtons
+        function updateMaterialButtons() {
+            updateSelectionUI();
         }
 
         function initCanvas() {
@@ -669,6 +776,21 @@
         }
 
         function getSubtileCoords(x, y, corner, matNum) {
+            // Algoritmo de autotiling RPG Maker A2 (basado en wareya/webtyler)
+            // 
+            // Tileset 96x144 = 4x6 subtiles de 24x24:
+            // ┌─────────┬─────────┐
+            // │ (0,0-1) │ (2,0-1) │  Thumbnail | Inner corners
+            // ├─────────┼─────────┤
+            // │ (0,2-3) │ (2,2-3) │  NW outer  | NE outer
+            // ├─────────┼─────────┤
+            // │ (0,4-5) │ (2,4-5) │  SW outer  | SE outer
+            // └─────────┴─────────┘
+            //
+            // Cada "outer tile" contiene:
+            // [Corner][Edge horizontal]
+            // [Edge vertical][Interior]
+
             const N = isFilled(x, y - 1, matNum);
             const S = isFilled(x, y + 1, matNum);
             const E = isFilled(x + 1, y, matNum);
@@ -679,57 +801,102 @@
             const SW_diag = isFilled(x - 1, y + 1, matNum);
             const SE_diag = isFilled(x + 1, y + 1, matNum);
 
-            if (!N && !S && !E && !W) {
-                const map = { NW: { x: 0, y: 0 }, NE: { x: 1, y: 0 }, SW: { x: 0, y: 1 }, SE: { x: 1, y: 1 } };
-                return map[corner];
-            }
-
             switch (corner) {
                 case 'NW':
                     if (N && W) {
-                        if (NW_diag) return { x: 1, y: 3 };
-                        else return { x: 2, y: 0 };
+                        if (NW_diag) return { x: 1, y: 3 };  // Interior (tile NW outer, cuadrante SE)
+                        else return { x: 2, y: 0 };          // Inner corner NW (tile Inner, cuadrante NW)
                     }
-                    if (N && !W) return { x: 0, y: 4 };
-                    if (!N && W) return { x: 2, y: 2 };
-                    return { x: 0, y: 0 };
+                    if (N && !W) return { x: 0, y: 3 };      // Edge W (tile NW outer, cuadrante SW)
+                    if (!N && W) return { x: 1, y: 2 };      // Edge N (tile NW outer, cuadrante NE)
+                    return { x: 0, y: 2 };                   // Corner exterior NW (tile NW outer, cuadrante NW)
 
                 case 'NE':
                     if (N && E) {
-                        if (NE_diag) return { x: 2, y: 3 };
-                        else return { x: 3, y: 0 };
+                        if (NE_diag) return { x: 2, y: 3 };  // Interior (tile NE outer, cuadrante SW)
+                        else return { x: 3, y: 0 };          // Inner corner NE (tile Inner, cuadrante NE)
                     }
-                    if (N && !E) return { x: 3, y: 4 };
-                    if (!N && E) return { x: 2, y: 2 };
-                    return { x: 1, y: 0 };
+                    if (N && !E) return { x: 3, y: 3 };      // Edge E (tile NE outer, cuadrante SE)
+                    if (!N && E) return { x: 2, y: 2 };      // Edge N (tile NE outer, cuadrante NW)
+                    return { x: 3, y: 2 };                   // Corner exterior NE (tile NE outer, cuadrante NE)
 
                 case 'SW':
                     if (S && W) {
-                        if (SW_diag) return { x: 1, y: 4 };
-                        else return { x: 2, y: 1 };
+                        if (SW_diag) return { x: 1, y: 4 };  // Interior (tile SW outer, cuadrante NE)
+                        else return { x: 2, y: 1 };          // Inner corner SW (tile Inner, cuadrante SW)
                     }
-                    if (S && !W) return { x: 0, y: 4 };
-                    if (!S && W) return { x: 2, y: 5 };
-                    return { x: 0, y: 1 };
+                    if (S && !W) return { x: 0, y: 4 };      // Edge W (tile SW outer, cuadrante NW)
+                    if (!S && W) return { x: 1, y: 5 };      // Edge S (tile SW outer, cuadrante SE)
+                    return { x: 0, y: 5 };                   // Corner exterior SW (tile SW outer, cuadrante SW)
 
                 case 'SE':
                     if (S && E) {
-                        if (SE_diag) return { x: 2, y: 4 };
-                        else return { x: 3, y: 1 };
+                        if (SE_diag) return { x: 2, y: 4 };  // Interior (tile SE outer, cuadrante NW)
+                        else return { x: 3, y: 1 };          // Inner corner SE (tile Inner, cuadrante SE)
                     }
-                    if (S && !E) return { x: 3, y: 4 };
-                    if (!S && E) return { x: 2, y: 5 };
-                    return { x: 1, y: 1 };
+                    if (S && !E) return { x: 3, y: 4 };      // Edge E (tile SE outer, cuadrante NE)
+                    if (!S && E) return { x: 2, y: 5 };      // Edge S (tile SE outer, cuadrante SW)
+                    return { x: 3, y: 5 };                   // Corner exterior SE (tile SE outer, cuadrante SE)
             }
 
             return { x: 0, y: 0 };
         }
 
+        // Obtiene el material hacia el cual transiciona un corner específico
+        // Retorna el material con menor número entre los vecinos cardinales relevantes
+        // o null si no hay transición (todos los vecinos son del mismo material)
+        function getTransitionMaterial(x, y, corner, myMaterial) {
+            let neighbors = [];
+
+            // Cada corner mira 2 vecinos cardinales + 1 diagonal
+            switch (corner) {
+                case 'NW':
+                    neighbors = [
+                        { x: x, y: y - 1 },     // N
+                        { x: x - 1, y: y }      // W
+                    ];
+                    break;
+                case 'NE':
+                    neighbors = [
+                        { x: x, y: y - 1 },     // N
+                        { x: x + 1, y: y }      // E
+                    ];
+                    break;
+                case 'SW':
+                    neighbors = [
+                        { x: x, y: y + 1 },     // S
+                        { x: x - 1, y: y }      // W
+                    ];
+                    break;
+                case 'SE':
+                    neighbors = [
+                        { x: x, y: y + 1 },     // S
+                        { x: x + 1, y: y }      // E
+                    ];
+                    break;
+            }
+
+            // Encontrar materiales vecinos diferentes al mío
+            let differentMaterials = [];
+            for (const n of neighbors) {
+                if (n.x >= 0 && n.x < gridWidth && n.y >= 0 && n.y < gridHeight) {
+                    const neighborMat = grid[n.y][n.x];
+                    if (neighborMat !== myMaterial && !differentMaterials.includes(neighborMat)) {
+                        differentMaterials.push(neighborMat);
+                    }
+                }
+            }
+
+            if (differentMaterials.length === 0) {
+                return null; // No hay transición, usar tileset puro
+            }
+
+            // Si hay múltiples materiales diferentes, elegir el de menor número (jerarquía)
+            return Math.min(...differentMaterials);
+        }
+
         function drawTile(x, y) {
             const matNum = grid[y][x];
-            const tileset = tilesets[matNum];
-
-            if (!tileset) return;
 
             const halfTile = tileSize / 2;
             const subtileSize = 24;
@@ -741,32 +908,27 @@
                 SE: { dx: x * tileSize + halfTile, dy: y * tileSize + halfTile }
             };
 
-            // Dibujar tileset base (underlay) si está configurado
-            const underlayConfig = materialUnderlays[matNum];
-            if (underlayConfig && underlayConfig.enabled && underlayConfig.tilesetIndex !== null) {
-                const underlayTileset = spritesheetTilesets[underlayConfig.tilesetIndex];
-                if (underlayTileset && underlayTileset.canvas) {
-                    for (const corner of ['NW', 'NE', 'SW', 'SE']) {
-                        const srcPos = getSubtileCoords(x, y, corner, matNum);
-
-                        ctx.drawImage(
-                            underlayTileset.canvas,
-                            srcPos.x * subtileSize,
-                            srcPos.y * subtileSize,
-                            subtileSize,
-                            subtileSize,
-                            positions[corner].dx,
-                            positions[corner].dy,
-                            halfTile,
-                            halfTile
-                        );
-                    }
-                }
-            }
-
-            // Dibujar tileset principal encima
+            // Dibujar cada corner con su tileset correspondiente
             for (const corner of ['NW', 'NE', 'SW', 'SE']) {
-                const srcPos = getSubtileCoords(x, y, corner, matNum);
+                // Determinar hacia qué material transiciona este corner
+                const transitionTo = getTransitionMaterial(x, y, corner, matNum);
+
+                // Seleccionar el tileset apropiado
+                let tileset = null;
+                if (transitionTo !== null && transitionTilesets[matNum] && transitionTilesets[matNum][transitionTo]) {
+                    // Usar tileset de transición
+                    tileset = transitionTilesets[matNum][transitionTo];
+                } else {
+                    // Usar tileset puro
+                    tileset = tilesets[matNum];
+                }
+
+                if (!tileset) continue;
+
+                // Calcular coordenadas del subtile
+                // Para transiciones, usamos el mismo algoritmo pero considerando
+                // como "lleno" si el vecino es del mismo material O del material de transición
+                const srcPos = getSubtileCoordsForTransition(x, y, corner, matNum, transitionTo);
 
                 ctx.drawImage(
                     tileset,
@@ -780,6 +942,67 @@
                     halfTile
                 );
             }
+        }
+
+        // Versión de getSubtileCoords que considera transiciones
+        // Un vecino se considera "lleno" si es del material actual
+        function getSubtileCoordsForTransition(x, y, corner, matNum, transitionTo) {
+            // Para el algoritmo de autotiling, un vecino está "lleno" si:
+            // - Es del mismo material que el tile actual
+            const isFilled = (nx, ny) => {
+                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) return false;
+                return grid[ny][nx] === matNum;
+            };
+
+            const N = isFilled(x, y - 1);
+            const S = isFilled(x, y + 1);
+            const E = isFilled(x + 1, y);
+            const W = isFilled(x - 1, y);
+
+            const NW_diag = isFilled(x - 1, y - 1);
+            const NE_diag = isFilled(x + 1, y - 1);
+            const SW_diag = isFilled(x - 1, y + 1);
+            const SE_diag = isFilled(x + 1, y + 1);
+
+            switch (corner) {
+                case 'NW':
+                    if (N && W) {
+                        if (NW_diag) return { x: 1, y: 3 };
+                        else return { x: 2, y: 0 };
+                    }
+                    if (N && !W) return { x: 0, y: 3 };
+                    if (!N && W) return { x: 1, y: 2 };
+                    return { x: 0, y: 2 };
+
+                case 'NE':
+                    if (N && E) {
+                        if (NE_diag) return { x: 2, y: 3 };
+                        else return { x: 3, y: 0 };
+                    }
+                    if (N && !E) return { x: 3, y: 3 };
+                    if (!N && E) return { x: 2, y: 2 };
+                    return { x: 3, y: 2 };
+
+                case 'SW':
+                    if (S && W) {
+                        if (SW_diag) return { x: 1, y: 4 };
+                        else return { x: 2, y: 1 };
+                    }
+                    if (S && !W) return { x: 0, y: 4 };
+                    if (!S && W) return { x: 1, y: 5 };
+                    return { x: 0, y: 5 };
+
+                case 'SE':
+                    if (S && E) {
+                        if (SE_diag) return { x: 2, y: 4 };
+                        else return { x: 3, y: 1 };
+                    }
+                    if (S && !E) return { x: 3, y: 4 };
+                    if (!S && E) return { x: 2, y: 5 };
+                    return { x: 3, y: 5 };
+            }
+
+            return { x: 0, y: 0 };
         }
 
         function render() {
@@ -1065,88 +1288,97 @@
         }
 
         function assignTilesetToMaterial(tilesetIndex) {
-            console.log('=== assignTilesetToMaterial ===');
-            console.log('tilesetIndex:', tilesetIndex);
-            console.log('materials:', materials);
-            console.log('currentMaterial:', currentMaterial);
-
             if (materials.length === 0) {
-                console.log('ERROR: No hay materiales');
                 log('ERROR: Primero importá un JSON con materiales');
                 return;
             }
 
             const tileset = spritesheetTilesets[tilesetIndex];
-            console.log('tileset encontrado:', tileset);
             if (!tileset) {
-                console.log('ERROR: tileset no encontrado');
+                log('ERROR: Tileset no encontrado');
                 return;
             }
 
-            // Desasignar de material anterior si existía
-            if (tileset.assignedTo !== null) {
-                console.log('Desasignando de material anterior:', tileset.assignedTo);
-                delete tilesets[tileset.assignedTo];
-            }
+            // Determinar si estamos asignando a material puro o transición
+            if (currentTransition) {
+                // === Asignar a TRANSICIÓN ===
+                const { from, to } = currentTransition;
 
-            // Si ya había otro tileset asignado a este material, desasignarlo
-            const previousTileset = spritesheetTilesets.find(t => t.assignedTo === currentMaterial);
-            if (previousTileset && previousTileset.index !== tilesetIndex) {
-                console.log('Desasignando tileset anterior del material actual:', previousTileset.index);
-                previousTileset.assignedTo = null;
-                const prevLabel = document.getElementById(`assigned-${previousTileset.index}`);
-                if (prevLabel) prevLabel.style.display = 'none';
-                document.querySelector(`.spritesheet-tile[data-index="${previousTileset.index}"]`)?.classList.remove('selected');
-            }
-
-            // Asignar nuevo - usar el canvas directamente (drawImage acepta canvas)
-            console.log('Asignando tileset.canvas a tilesets[' + currentMaterial + ']');
-            tileset.assignedTo = currentMaterial;
-            tilesets[currentMaterial] = tileset.canvas;
-            console.log('tilesets después de asignar:', tilesets);
-
-            // Actualizar UI
-            const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
-            console.log('assignedLabel:', assignedLabel);
-            if (assignedLabel) {
-                const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === currentMaterial);
-                const matName = matDef ? matDef.name : `Mat ${currentMaterial}`;
-                console.log('Actualizando label con:', matName);
-                assignedLabel.textContent = matName;
-                assignedLabel.style.display = 'block';
-            }
-
-            // Marcar como seleccionado
-            console.log('Marcando tile como seleccionado');
-            document.querySelectorAll('.spritesheet-tile').forEach(el => {
-                if (parseInt(el.dataset.index) === tilesetIndex) {
-                    el.classList.add('selected');
-                    console.log('Tile seleccionado:', el);
+                // Inicializar estructura si no existe
+                if (!transitionTilesets[from]) {
+                    transitionTilesets[from] = {};
                 }
-            });
 
-            // Actualizar preview en la lista de materiales
-            const preview = document.getElementById(`preview${currentMaterial}`);
-            console.log('preview element:', preview);
-            if (preview) {
-                preview.innerHTML = '';
-                const previewCanvas = document.createElement('canvas');
-                previewCanvas.width = TILESET_WIDTH;
-                previewCanvas.height = TILESET_HEIGHT;
-                previewCanvas.style.width = '100%';
-                previewCanvas.style.height = '100%';
-                previewCanvas.getContext('2d').drawImage(tileset.canvas, 0, 0);
-                preview.appendChild(previewCanvas);
-                console.log('Preview actualizado');
+                // Asignar el tileset
+                transitionTilesets[from][to] = tileset.canvas;
+
+                // Actualizar label en spritesheet
+                const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
+                if (assignedLabel) {
+                    assignedLabel.textContent = `${from}→${to}`;
+                    assignedLabel.style.display = 'block';
+                    assignedLabel.style.background = '#e67e22';
+                }
+
+                // Actualizar preview en la lista de transiciones
+                const preview = document.getElementById(`preview-trans-${from}-${to}`);
+                if (preview) {
+                    preview.innerHTML = '';
+                    const previewCanvas = document.createElement('canvas');
+                    previewCanvas.width = TILESET_WIDTH;
+                    previewCanvas.height = TILESET_HEIGHT;
+                    previewCanvas.style.width = '100%';
+                    previewCanvas.style.height = '100%';
+                    previewCanvas.getContext('2d').drawImage(tileset.canvas, 0, 0);
+                    preview.appendChild(previewCanvas);
+                }
+
+                log(`Tileset #${tilesetIndex} asignado a transición ${from}→${to}`);
+
+            } else if (currentMaterial !== null) {
+                // === Asignar a MATERIAL PURO ===
+
+                // Asignar el tileset
+                tilesets[currentMaterial] = tileset.canvas;
+
+                // Actualizar label en spritesheet
+                const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
+                if (assignedLabel) {
+                    const matName = getMaterialName(currentMaterial);
+                    assignedLabel.textContent = matName;
+                    assignedLabel.style.display = 'block';
+                    assignedLabel.style.background = '#2ecc71';
+                }
+
+                // Actualizar preview en la lista de materiales
+                const preview = document.getElementById(`preview${currentMaterial}`);
+                if (preview) {
+                    preview.innerHTML = '';
+                    const previewCanvas = document.createElement('canvas');
+                    previewCanvas.width = TILESET_WIDTH;
+                    previewCanvas.height = TILESET_HEIGHT;
+                    previewCanvas.style.width = '100%';
+                    previewCanvas.style.height = '100%';
+                    previewCanvas.getContext('2d').drawImage(tileset.canvas, 0, 0);
+                    preview.appendChild(previewCanvas);
+                }
+
+                log(`Tileset #${tilesetIndex} asignado a material puro ${currentMaterial}`);
+
+            } else {
+                log('ERROR: Seleccioná un material o transición primero');
+                return;
             }
 
-            log(`Tileset #${tilesetIndex} asignado a material ${currentMaterial}`);
-            console.log('Llamando a render()...');
             render();
-            console.log('=== FIN assignTilesetToMaterial ===');
         }
 
         log('Editor iniciado');
+
+        // Initialize canvas with default 10x10 grid
+        initCanvas();
+        createTilesetUI(); // Create UI for default material 0
+        render();
     </script>
 </body>
 </html>
