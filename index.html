@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RPG Maker Autotile Editor - JSON Import</title>
+    <title>RPG Maker Autotile Editor - Layers</title>
     <style>
         * {
             margin: 0;
@@ -183,9 +183,155 @@
         }
 
         .left-panel {
-            flex: 0 0 400px;
+            flex: 0 0 420px;
         }
 
+        /* ========== LAYERS PANEL ========== */
+        .layers-section {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .layers-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .layers-header h3 {
+            color: #3498db;
+        }
+
+        .layers-header-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .layers-header-buttons button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        .layers-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .layer-item {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 10px;
+            background: #2c3e50;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .layer-item:hover {
+            background: #34495e;
+            border-color: #3498db;
+        }
+
+        .layer-item.active {
+            background: #2980b9;
+            border-color: #3498db;
+        }
+
+        .layer-item.dragging {
+            opacity: 0.5;
+            border-color: #e74c3c;
+        }
+
+        .layer-visibility {
+            width: 28px;
+            height: 28px;
+            background: #27ae60;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .layer-visibility.hidden {
+            background: #7f8c8d;
+        }
+
+        .layer-preview {
+            width: 48px;
+            height: 72px;
+            border: 2px solid #3498db;
+            background: #1a252f;
+            border-radius: 4px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .layer-preview canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+
+        .layer-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .layer-name {
+            font-weight: bold;
+            color: #3498db;
+            font-size: 13px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .layer-opacity-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+        }
+
+        .layer-opacity-row input[type="range"] {
+            width: 80px;
+            height: 4px;
+        }
+
+        .layer-opacity-value {
+            width: 35px;
+            text-align: right;
+            color: #95a5a6;
+        }
+
+        .layer-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .layer-controls button {
+            padding: 3px 6px;
+            font-size: 10px;
+            background: #34495e;
+        }
+
+        .layer-controls button:hover {
+            background: #3498db;
+        }
+
+        /* ========== TILESET ASSIGNMENT ========== */
         .tileset-section {
             background: #34495e;
             padding: 15px;
@@ -198,54 +344,27 @@
             color: #3498db;
         }
 
-        .tileset-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background: #2c3e50;
-            border-radius: 4px;
-            border: 2px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .tileset-row:hover {
-            background: #34495e;
-            border-color: #3498db;
-        }
-
-        .tileset-preview {
+        .tileset-preview-large {
             width: 96px;
             height: 144px;
             border: 2px solid #3498db;
-            background: white;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
+            background: #1a252f;
+            margin: 0 auto 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #95a5a6;
             font-size: 11px;
-            flex-shrink: 0;
+            text-align: center;
         }
 
-        .tileset-preview img {
+        .tileset-preview-large canvas {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            image-rendering: pixelated;
         }
 
-        .tileset-info {
-            flex: 1;
-        }
-
-        .material-name {
-            font-weight: bold;
-            color: #3498db;
-            margin-bottom: 5px;
-        }
-
+        /* ========== CONTROLS ========== */
         .controls {
             background: #34495e;
             padding: 20px;
@@ -303,15 +422,11 @@
             box-shadow: 0 0 15px rgba(231, 76, 60, 0.6);
         }
 
-        button.material-btn {
-            background: #27ae60;
+        button.danger {
+            background: #c0392b;
         }
 
-        button.material-btn:hover {
-            background: #229954;
-        }
-
-        button.material-btn.active {
+        button.danger:hover {
             background: #e74c3c;
         }
 
@@ -369,11 +484,27 @@
             padding: 40px;
             color: #95a5a6;
         }
+
+        .tool-mode {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .tool-mode button {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+        }
+
+        .tool-mode button.active {
+            background: #27ae60;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎨 RPG Maker Autotile Editor</h1>
+        <h1>🎨 RPG Maker Autotile Editor - Layers</h1>
 
         <div class="import-section">
             <h2>📥 Importar Mapa JSON</h2>
@@ -388,7 +519,7 @@
             </div>
             <div class="spritesheet-preview-container" id="spritesheetPreview">
                 <div class="assign-hint">
-                    Seleccioná un material de la lista, luego hacé click en un tileset para asignarlo
+                    Seleccioná un layer de la lista, luego hacé click en un tileset para asignarlo
                 </div>
                 <div class="spritesheet-tiles" id="spritesheetTiles"></div>
             </div>
@@ -396,18 +527,40 @@
 
         <div class="main-content">
             <div class="left-panel">
-                <div class="tileset-section">
-                    <h3>Materiales y Tilesets Asignados</h3>
-                    <div id="tilesetList">
+                <!-- Panel de Layers -->
+                <div class="layers-section">
+                    <div class="layers-header">
+                        <h3>📚 Layers</h3>
+                        <div class="layers-header-buttons">
+                            <button onclick="addLayer()" title="Agregar layer">➕ Nuevo</button>
+                        </div>
+                    </div>
+                    <div class="layers-list" id="layersList">
                         <div class="empty-state">
-                            Importá un JSON para ver los materiales
+                            Importá un JSON para crear layers
                         </div>
                     </div>
                 </div>
 
+                <!-- Tileset del layer seleccionado -->
+                <div class="tileset-section" id="tilesetSection" style="display: none;">
+                    <h3>🎨 Tileset del Layer</h3>
+                    <div class="tileset-preview-large" id="currentLayerTileset">
+                        Sin tileset asignado
+                    </div>
+                    <div style="font-size: 11px; color: #95a5a6; text-align: center;">
+                        Seleccioná un tileset del spritesheet para asignarlo
+                    </div>
+                </div>
+
+                <!-- Herramientas -->
                 <div class="controls" id="toolsSection" style="display: none;">
                     <h3 style="margin-bottom: 15px; color: #3498db;">Herramientas</h3>
-                    <div class="tools" id="materialButtons"></div>
+
+                    <div class="tool-mode">
+                        <button id="drawModeBtn" class="active" onclick="setToolMode('draw')">✏️ Dibujar</button>
+                        <button id="eraseModeBtn" onclick="setToolMode('erase')">🧹 Borrar</button>
+                    </div>
 
                     <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #2c3e50;">
                         <h4 style="margin-bottom: 10px; color: #3498db;">Escalar Tilemap</h4>
@@ -446,46 +599,310 @@
         let gridWidth = 10;
         let gridHeight = 10;
         let tileSize = 48;
-        let grid = [];
 
-        let tilesets = {};  // { materialNumber: canvas } - tilesets "puros"
-        let transitionTilesets = {};  // { fromMaterial: { toMaterial: canvas } } - tilesets de transición
-        let materials = [0]; // Start with material 0
-        let currentMaterial = 0;
-        let currentTransition = null; // { from: number, to: number } - transición seleccionada para asignar
-        let isDrawing = false;
-        let isPanning = false;
+        // ========== NUEVA ESTRUCTURA DE LAYERS ==========
+        let layers = [];
+        let activeLayerId = null;
+        let nextLayerId = 1;
+
+        // Estructura de un layer:
+        // {
+        //     id: number,
+        //     name: string,
+        //     grid: number[][],  // 0 = vacío, >0 = tiene material
+        //     material: number|null,  // número de material asignado
+        //     tileset: canvas|null,   // canvas del tileset
+        //     visible: boolean,
+        //     opacity: number (0-1),
+        //     order: number  // menor = más abajo
+        // }
+
+        let tilesets = {};  // { materialNumber: canvas } - para compatibilidad
         let jsonData = null;
-        let materialUnderlays = {}; // { materialNumber: { enabled: bool, tilesetIndex: number } }
-
-        // Initialize default 10x10 grid with material 0
-        for (let y = 0; y < gridHeight; y++) {
-            grid[y] = [];
-            for (let x = 0; x < gridWidth; x++) {
-                grid[y][x] = 0;
-            }
-        }
+        let toolMode = 'draw'; // 'draw' o 'erase'
 
         // Spritesheet
         let spritesheetImage = null;
-        let spritesheetTilesets = []; // Array de {canvas, index, col, row}
+        let spritesheetTilesets = [];
         const TILESET_WIDTH = 96;
         const TILESET_HEIGHT = 144;
 
         // Camera controls
-        let camera = {
-            x: 0,
-            y: 0,
-            zoom: 1,
-            startX: 0,
-            startY: 0,
-            dragStartX: 0,
-            dragStartY: 0
-        };
+        let camera = { x: 0, y: 0, zoom: 1, startX: 0, startY: 0, dragStartX: 0, dragStartY: 0 };
+        let isDrawing = false;
+        let isPanning = false;
 
         function log(msg) {
             console.log(`[AutoTiler] ${msg}`);
         }
+
+        // ========== LAYER MANAGEMENT ==========
+
+        function createLayer(name, material = null, grid = null) {
+            const layer = {
+                id: nextLayerId++,
+                name: name,
+                grid: grid || createEmptyGrid(),
+                material: material,
+                tileset: null,
+                visible: true,
+                opacity: 1,
+                order: layers.length
+            };
+            layers.push(layer);
+            return layer;
+        }
+
+        function createEmptyGrid() {
+            const grid = [];
+            for (let y = 0; y < gridHeight; y++) {
+                grid[y] = [];
+                for (let x = 0; x < gridWidth; x++) {
+                    grid[y][x] = 0;
+                }
+            }
+            return grid;
+        }
+
+        function createFilledGrid(value) {
+            const grid = [];
+            for (let y = 0; y < gridHeight; y++) {
+                grid[y] = [];
+                for (let x = 0; x < gridWidth; x++) {
+                    grid[y][x] = value;
+                }
+            }
+            return grid;
+        }
+
+        function getLayerById(id) {
+            return layers.find(l => l.id === id);
+        }
+
+        function getActiveLayer() {
+            return getLayerById(activeLayerId);
+        }
+
+        function setActiveLayer(id) {
+            activeLayerId = id;
+            updateLayersUI();
+            updateTilesetPreview();
+        }
+
+        function addLayer() {
+            const layer = createLayer(`Layer ${nextLayerId}`);
+            setActiveLayer(layer.id);
+            updateLayersUI();
+            document.getElementById('toolsSection').style.display = 'block';
+            document.getElementById('tilesetSection').style.display = 'block';
+            log(`Layer "${layer.name}" creado`);
+            render();
+        }
+
+        function deleteLayer(id) {
+            if (layers.length <= 1) {
+                log('ERROR: Debe haber al menos un layer');
+                return;
+            }
+            const index = layers.findIndex(l => l.id === id);
+            if (index !== -1) {
+                const name = layers[index].name;
+                layers.splice(index, 1);
+                // Reordenar
+                layers.forEach((l, i) => l.order = i);
+                // Si era el activo, seleccionar otro
+                if (activeLayerId === id) {
+                    activeLayerId = layers[0]?.id || null;
+                }
+                updateLayersUI();
+                updateTilesetPreview();
+                log(`Layer "${name}" eliminado`);
+                render();
+            }
+        }
+
+        function moveLayerUp(id) {
+            const index = layers.findIndex(l => l.id === id);
+            if (index > 0) {
+                [layers[index], layers[index - 1]] = [layers[index - 1], layers[index]];
+                layers.forEach((l, i) => l.order = i);
+                updateLayersUI();
+                render();
+            }
+        }
+
+        function moveLayerDown(id) {
+            const index = layers.findIndex(l => l.id === id);
+            if (index < layers.length - 1) {
+                [layers[index], layers[index + 1]] = [layers[index + 1], layers[index]];
+                layers.forEach((l, i) => l.order = i);
+                updateLayersUI();
+                render();
+            }
+        }
+
+        function toggleLayerVisibility(id) {
+            const layer = getLayerById(id);
+            if (layer) {
+                layer.visible = !layer.visible;
+                updateLayersUI();
+                render();
+            }
+        }
+
+        function setLayerOpacity(id, opacity) {
+            const layer = getLayerById(id);
+            if (layer) {
+                layer.opacity = parseFloat(opacity);
+                render();
+            }
+        }
+
+        // ========== UI ==========
+
+        function updateLayersUI() {
+            const container = document.getElementById('layersList');
+            container.innerHTML = '';
+
+            if (layers.length === 0) {
+                container.innerHTML = '<div class="empty-state">Importá un JSON para crear layers</div>';
+                return;
+            }
+
+            // Mostrar layers en orden inverso (el de arriba se dibuja último = más visible)
+            const sortedLayers = [...layers].reverse();
+
+            sortedLayers.forEach(layer => {
+                const item = document.createElement('div');
+                item.className = 'layer-item' + (layer.id === activeLayerId ? ' active' : '');
+                item.draggable = true;
+                item.dataset.id = layer.id;
+
+                item.innerHTML = `
+                    <button class="layer-visibility ${layer.visible ? '' : 'hidden'}" 
+                            onclick="event.stopPropagation(); toggleLayerVisibility(${layer.id})"
+                            title="${layer.visible ? 'Ocultar' : 'Mostrar'}">
+                        ${layer.visible ? '👁️' : '👁️‍🗨️'}
+                    </button>
+                    <div class="layer-preview" id="layer-preview-${layer.id}"></div>
+                    <div class="layer-info">
+                        <div class="layer-name" style="color: ${layer.material !== null ? getMaterialColor(layer.material) : '#3498db'}">
+                            ${layer.name}
+                        </div>
+                        <div class="layer-opacity-row">
+                            <span>α</span>
+                            <input type="range" min="0" max="1" step="0.1" value="${layer.opacity}"
+                                   onchange="setLayerOpacity(${layer.id}, this.value)"
+                                   onclick="event.stopPropagation()">
+                            <span class="layer-opacity-value">${Math.round(layer.opacity * 100)}%</span>
+                        </div>
+                    </div>
+                    <div class="layer-controls">
+                        <button onclick="event.stopPropagation(); moveLayerUp(${layer.id})" title="Subir">⬆️</button>
+                        <button onclick="event.stopPropagation(); moveLayerDown(${layer.id})" title="Bajar">⬇️</button>
+                        <button class="danger" onclick="event.stopPropagation(); deleteLayer(${layer.id})" title="Eliminar">🗑️</button>
+                    </div>
+                `;
+
+                item.onclick = () => setActiveLayer(layer.id);
+
+                // Drag & drop
+                item.ondragstart = (e) => {
+                    e.dataTransfer.setData('text/plain', layer.id);
+                    item.classList.add('dragging');
+                };
+                item.ondragend = () => item.classList.remove('dragging');
+                item.ondragover = (e) => e.preventDefault();
+                item.ondrop = (e) => {
+                    e.preventDefault();
+                    const draggedId = parseInt(e.dataTransfer.getData('text/plain'));
+                    const targetId = layer.id;
+                    reorderLayers(draggedId, targetId);
+                };
+
+                container.appendChild(item);
+
+                // Actualizar preview del layer
+                updateLayerPreview(layer.id);
+            });
+
+            // Actualizar hint del spritesheet
+            updateAssignHint();
+        }
+
+        function updateLayerPreview(layerId) {
+            const layer = getLayerById(layerId);
+            if (!layer) return;
+
+            const container = document.getElementById(`layer-preview-${layerId}`);
+            if (!container) return;
+
+            container.innerHTML = '';
+
+            if (layer.tileset) {
+                const previewCanvas = document.createElement('canvas');
+                previewCanvas.width = TILESET_WIDTH;
+                previewCanvas.height = TILESET_HEIGHT;
+                previewCanvas.getContext('2d').drawImage(layer.tileset, 0, 0);
+                container.appendChild(previewCanvas);
+            }
+        }
+
+        function updateTilesetPreview() {
+            const container = document.getElementById('currentLayerTileset');
+            const layer = getActiveLayer();
+
+            if (!layer) {
+                container.innerHTML = 'Seleccioná un layer';
+                return;
+            }
+
+            container.innerHTML = '';
+
+            if (layer.tileset) {
+                const previewCanvas = document.createElement('canvas');
+                previewCanvas.width = TILESET_WIDTH;
+                previewCanvas.height = TILESET_HEIGHT;
+                previewCanvas.getContext('2d').drawImage(layer.tileset, 0, 0);
+                container.appendChild(previewCanvas);
+            } else {
+                container.innerHTML = 'Sin tileset asignado<br><small>Seleccioná uno del spritesheet</small>';
+            }
+        }
+
+        function updateAssignHint() {
+            const hint = document.querySelector('.assign-hint');
+            if (!hint) return;
+
+            const layer = getActiveLayer();
+            if (layer) {
+                hint.innerHTML = `Layer activo: <strong style="color: ${layer.material !== null ? getMaterialColor(layer.material) : '#3498db'}">${layer.name}</strong> - Hacé click en un tileset para asignarlo`;
+            } else {
+                hint.innerHTML = 'Seleccioná un layer de la lista';
+            }
+        }
+
+        function reorderLayers(draggedId, targetId) {
+            const draggedIndex = layers.findIndex(l => l.id === draggedId);
+            const targetIndex = layers.findIndex(l => l.id === targetId);
+
+            if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+                const [dragged] = layers.splice(draggedIndex, 1);
+                layers.splice(targetIndex, 0, dragged);
+                layers.forEach((l, i) => l.order = i);
+                updateLayersUI();
+                render();
+            }
+        }
+
+        function setToolMode(mode) {
+            toolMode = mode;
+            document.getElementById('drawModeBtn').classList.toggle('active', mode === 'draw');
+            document.getElementById('eraseModeBtn').classList.toggle('active', mode === 'erase');
+            log(`Modo: ${mode}`);
+        }
+
+        // ========== JSON IMPORT ==========
 
         function detectMaterials(materialsArray) {
             const uniqueMaterials = new Set();
@@ -497,30 +914,11 @@
             return Array.from(uniqueMaterials).sort((a, b) => a - b);
         }
 
-        // Genera todas las combinaciones de transiciones necesarias
-        // Para N materiales: N*(N-1) transiciones (cada par en ambas direcciones)
-        function generateTransitionPairs(materialsArray) {
-            const pairs = [];
-            for (let i = 0; i < materialsArray.length; i++) {
-                for (let j = 0; j < materialsArray.length; j++) {
-                    if (i !== j) {
-                        pairs.push({
-                            from: materialsArray[i],
-                            to: materialsArray[j]
-                        });
-                    }
-                }
-            }
-            return pairs;
-        }
-
-        // Obtiene el nombre de un material
         function getMaterialName(matNum) {
             const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === matNum);
             return matDef ? matDef.name : `Material ${matNum}`;
         }
 
-        // Obtiene el color de un material
         function getMaterialColor(matNum) {
             const matDef = jsonData?.materialDefinitions?.find(m => m.materialNumber === matNum);
             return matDef ? matDef.color : '#999';
@@ -539,14 +937,46 @@
 
                     gridHeight = jsonData.materials.length;
                     gridWidth = jsonData.materials[0].length;
-                    grid = jsonData.materials;
 
-                    materials = detectMaterials(jsonData.materials);
+                    const detectedMaterials = detectMaterials(jsonData.materials);
+                    log(`JSON importado: ${gridWidth}x${gridHeight} con ${detectedMaterials.length} materiales`);
+                    log(`Materiales detectados: ${detectedMaterials.join(', ')}`);
 
-                    log(`JSON importado: ${gridWidth}x${gridHeight} con ${materials.length} materiales`);
-                    log(`Materiales detectados: ${materials.join(', ')}`);
+                    // Reset layers
+                    layers = [];
+                    nextLayerId = 1;
 
-                    createTilesetUI();
+                    // Crear layer de fondo (el primer material, usualmente 0)
+                    const bgMaterial = detectedMaterials[0];
+                    const bgLayer = createLayer(`Fondo (${getMaterialName(bgMaterial)})`, bgMaterial, createFilledGrid(bgMaterial));
+                    bgLayer.name = `Fondo`;
+
+                    // Crear un layer por cada material (excepto el fondo)
+                    detectedMaterials.slice(1).forEach(matNum => {
+                        const matName = getMaterialName(matNum);
+                        const grid = [];
+
+                        // Crear grilla donde este material está presente
+                        for (let y = 0; y < gridHeight; y++) {
+                            grid[y] = [];
+                            for (let x = 0; x < gridWidth; x++) {
+                                grid[y][x] = jsonData.materials[y][x] === matNum ? matNum : 0;
+                            }
+                        }
+
+                        createLayer(matName, matNum, grid);
+                    });
+
+                    // Seleccionar el primer layer
+                    if (layers.length > 0) {
+                        activeLayerId = layers[0].id;
+                    }
+
+                    document.getElementById('toolsSection').style.display = 'block';
+                    document.getElementById('tilesetSection').style.display = 'block';
+
+                    updateLayersUI();
+                    updateTilesetPreview();
                     initCanvas();
                     render();
 
@@ -557,198 +987,14 @@
             reader.readAsText(file);
         }
 
-        function createTilesetUI() {
-            const tilesetList = document.getElementById('tilesetList');
-            const materialButtons = document.getElementById('materialButtons');
-            const toolsSection = document.getElementById('toolsSection');
-
-            tilesetList.innerHTML = '';
-            materialButtons.innerHTML = '';
-            toolsSection.style.display = 'block';
-
-            // === SECCIÓN 1: Tilesets Puros ===
-            const pureHeader = document.createElement('h4');
-            pureHeader.textContent = '🎨 Tilesets Puros';
-            pureHeader.style.cssText = 'color: #3498db; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #3498db;';
-            tilesetList.appendChild(pureHeader);
-
-            materials.forEach(matNum => {
-                const matName = getMaterialName(matNum);
-                const matColor = getMaterialColor(matNum);
-
-                const row = document.createElement('div');
-                row.className = 'tileset-row';
-                row.id = `pure-row-${matNum}`;
-                row.innerHTML = `
-                    <div class="tileset-preview" id="preview${matNum}">Sin asignar</div>
-                    <div class="tileset-info">
-                        <div class="material-name" style="color: ${matColor}">
-                            ${matName} (${matNum})
-                        </div>
-                        <div style="font-size: 11px; color: #95a5a6; margin-top: 5px;">
-                            Click para seleccionar, luego asigná un tileset
-                        </div>
-                    </div>
-                `;
-                row.style.cursor = 'pointer';
-                row.onclick = () => selectMaterial(matNum);
-                tilesetList.appendChild(row);
-
-                // Botón de material para pintar
-                const btn = document.createElement('button');
-                btn.className = 'material-btn';
-                btn.id = `mat${matNum}Btn`;
-                btn.textContent = `${matName} (${matNum})`;
-                btn.style.background = matColor;
-                btn.onclick = () => selectMaterial(matNum);
-                materialButtons.appendChild(btn);
-            });
-
-            // === SECCIÓN 2: Tilesets de Transición ===
-            if (materials.length > 1) {
-                const transHeader = document.createElement('h4');
-                transHeader.textContent = '🔄 Transiciones entre Materiales';
-                transHeader.style.cssText = 'color: #e67e22; margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #e67e22;';
-                tilesetList.appendChild(transHeader);
-
-                const transInfo = document.createElement('div');
-                transInfo.style.cssText = 'font-size: 11px; color: #95a5a6; margin-bottom: 10px; padding: 8px; background: #1a252f; border-radius: 4px;';
-                transInfo.innerHTML = `
-                    <strong>Jerarquía de materiales:</strong> El material con número menor es el "fondo".<br>
-                    Por ejemplo: ${getMaterialName(materials[0])}(${materials[0]}) → ${getMaterialName(materials[1])}(${materials[1]}) 
-                    significa "${getMaterialName(materials[0])} debajo de ${getMaterialName(materials[1])}"
-                `;
-                tilesetList.appendChild(transInfo);
-
-                const pairs = generateTransitionPairs(materials);
-
-                pairs.forEach(pair => {
-                    const fromName = getMaterialName(pair.from);
-                    const toName = getMaterialName(pair.to);
-                    const fromColor = getMaterialColor(pair.from);
-                    const toColor = getMaterialColor(pair.to);
-
-                    const row = document.createElement('div');
-                    row.className = 'tileset-row';
-                    row.id = `trans-row-${pair.from}-${pair.to}`;
-                    row.innerHTML = `
-                        <div class="tileset-preview" id="preview-trans-${pair.from}-${pair.to}">Sin asignar</div>
-                        <div class="tileset-info">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="color: ${fromColor}; font-weight: bold;">${fromName}(${pair.from})</span>
-                                <span style="color: #95a5a6;">→</span>
-                                <span style="color: ${toColor}; font-weight: bold;">${toName}(${pair.to})</span>
-                            </div>
-                            <div style="font-size: 11px; color: #95a5a6; margin-top: 5px;">
-                                ${pair.from < pair.to ? `${fromName} como fondo de ${toName}` : `${fromName} sobre ${toName}`}
-                            </div>
-                        </div>
-                    `;
-                    row.style.cursor = 'pointer';
-                    row.onclick = () => selectTransition(pair.from, pair.to);
-                    tilesetList.appendChild(row);
-
-                    // Inicializar estructura de transición si no existe
-                    if (!transitionTilesets[pair.from]) {
-                        transitionTilesets[pair.from] = {};
-                    }
-                });
-            }
-
-            if (materials.length > 0) {
-                currentMaterial = materials[0];
-                currentTransition = null;
-                updateSelectionUI();
-            }
-        }
-
-
-        function selectMaterial(matNum) {
-            currentMaterial = matNum;
-            currentTransition = null; // Deseleccionar transición
-            updateSelectionUI();
-            log(`Material puro seleccionado: ${matNum}`);
-        }
-
-        function selectTransition(fromMat, toMat) {
-            currentTransition = { from: fromMat, to: toMat };
-            currentMaterial = null; // Deseleccionar material puro
-            updateSelectionUI();
-            log(`Transición seleccionada: ${fromMat} → ${toMat}`);
-        }
-
-        function updateSelectionUI() {
-            // Actualizar botones de materiales (para pintar)
-            materials.forEach(matNum => {
-                const btn = document.getElementById(`mat${matNum}Btn`);
-                if (btn) {
-                    // Los botones de pintar solo se activan con el material de pintura actual
-                    btn.classList.remove('active');
-                }
-            });
-
-            // Actualizar filas de tilesets puros
-            materials.forEach(matNum => {
-                const row = document.getElementById(`pure-row-${matNum}`);
-                if (row) {
-                    if (currentMaterial === matNum && !currentTransition) {
-                        row.style.background = '#2980b9';
-                        row.style.border = '2px solid #3498db';
-                    } else {
-                        row.style.background = '';
-                        row.style.border = '';
-                    }
-                }
-            });
-
-            // Actualizar filas de transiciones
-            const pairs = generateTransitionPairs(materials);
-            pairs.forEach(pair => {
-                const row = document.getElementById(`trans-row-${pair.from}-${pair.to}`);
-                if (row) {
-                    if (currentTransition &&
-                        currentTransition.from === pair.from &&
-                        currentTransition.to === pair.to) {
-                        row.style.background = '#d35400';
-                        row.style.border = '2px solid #e67e22';
-                    } else {
-                        row.style.background = '';
-                        row.style.border = '';
-                    }
-                }
-            });
-
-            // Actualizar hint del spritesheet
-            const hint = document.querySelector('.assign-hint');
-            if (hint) {
-                if (currentTransition) {
-                    const fromName = getMaterialName(currentTransition.from);
-                    const toName = getMaterialName(currentTransition.to);
-                    hint.innerHTML = `Transición seleccionada: <strong>${fromName}(${currentTransition.from}) → ${toName}(${currentTransition.to})</strong> - Hacé click en un tileset para asignarlo`;
-                } else if (currentMaterial !== null) {
-                    const matName = getMaterialName(currentMaterial);
-                    hint.innerHTML = `Material puro seleccionado: <strong>${matName} (${currentMaterial})</strong> - Hacé click en un tileset para asignarlo`;
-                } else {
-                    hint.innerHTML = `Seleccioná un material o transición de la lista`;
-                }
-            }
-        }
-
-        // Mantener compatibilidad con updateMaterialButtons
-        function updateMaterialButtons() {
-            updateSelectionUI();
-        }
+        // ========== RENDERING ==========
 
         function initCanvas() {
-            const container = canvas.parentElement;
             canvas.width = gridWidth * tileSize;
             canvas.height = gridHeight * tileSize;
-
-            // Center camera
             camera.x = 0;
             camera.y = 0;
             camera.zoom = 1;
-
             updateZoomDisplay();
         }
 
@@ -770,199 +1016,22 @@
             };
         }
 
-        function isFilled(x, y, matNum) {
+        // Verifica si hay material en una posición del layer
+        function isFilledInLayer(layer, x, y) {
             if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-            return grid[y][x] === matNum;
+            return layer.grid[y][x] !== 0;
         }
 
-        function getSubtileCoords(x, y, corner, matNum) {
-            // Algoritmo de autotiling RPG Maker A2 (basado en wareya/webtyler)
-            // 
-            // Tileset 96x144 = 4x6 subtiles de 24x24:
-            // ┌─────────┬─────────┐
-            // │ (0,0-1) │ (2,0-1) │  Thumbnail | Inner corners
-            // ├─────────┼─────────┤
-            // │ (0,2-3) │ (2,2-3) │  NW outer  | NE outer
-            // ├─────────┼─────────┤
-            // │ (0,4-5) │ (2,4-5) │  SW outer  | SE outer
-            // └─────────┴─────────┘
-            //
-            // Cada "outer tile" contiene:
-            // [Corner][Edge horizontal]
-            // [Edge vertical][Interior]
+        function getSubtileCoords(layer, x, y, corner) {
+            const N = isFilledInLayer(layer, x, y - 1);
+            const S = isFilledInLayer(layer, x, y + 1);
+            const E = isFilledInLayer(layer, x + 1, y);
+            const W = isFilledInLayer(layer, x - 1, y);
 
-            const N = isFilled(x, y - 1, matNum);
-            const S = isFilled(x, y + 1, matNum);
-            const E = isFilled(x + 1, y, matNum);
-            const W = isFilled(x - 1, y, matNum);
-
-            const NW_diag = isFilled(x - 1, y - 1, matNum);
-            const NE_diag = isFilled(x + 1, y - 1, matNum);
-            const SW_diag = isFilled(x - 1, y + 1, matNum);
-            const SE_diag = isFilled(x + 1, y + 1, matNum);
-
-            switch (corner) {
-                case 'NW':
-                    if (N && W) {
-                        if (NW_diag) return { x: 1, y: 3 };  // Interior (tile NW outer, cuadrante SE)
-                        else return { x: 2, y: 0 };          // Inner corner NW (tile Inner, cuadrante NW)
-                    }
-                    if (N && !W) return { x: 0, y: 3 };      // Edge W (tile NW outer, cuadrante SW)
-                    if (!N && W) return { x: 1, y: 2 };      // Edge N (tile NW outer, cuadrante NE)
-                    return { x: 0, y: 2 };                   // Corner exterior NW (tile NW outer, cuadrante NW)
-
-                case 'NE':
-                    if (N && E) {
-                        if (NE_diag) return { x: 2, y: 3 };  // Interior (tile NE outer, cuadrante SW)
-                        else return { x: 3, y: 0 };          // Inner corner NE (tile Inner, cuadrante NE)
-                    }
-                    if (N && !E) return { x: 3, y: 3 };      // Edge E (tile NE outer, cuadrante SE)
-                    if (!N && E) return { x: 2, y: 2 };      // Edge N (tile NE outer, cuadrante NW)
-                    return { x: 3, y: 2 };                   // Corner exterior NE (tile NE outer, cuadrante NE)
-
-                case 'SW':
-                    if (S && W) {
-                        if (SW_diag) return { x: 1, y: 4 };  // Interior (tile SW outer, cuadrante NE)
-                        else return { x: 2, y: 1 };          // Inner corner SW (tile Inner, cuadrante SW)
-                    }
-                    if (S && !W) return { x: 0, y: 4 };      // Edge W (tile SW outer, cuadrante NW)
-                    if (!S && W) return { x: 1, y: 5 };      // Edge S (tile SW outer, cuadrante SE)
-                    return { x: 0, y: 5 };                   // Corner exterior SW (tile SW outer, cuadrante SW)
-
-                case 'SE':
-                    if (S && E) {
-                        if (SE_diag) return { x: 2, y: 4 };  // Interior (tile SE outer, cuadrante NW)
-                        else return { x: 3, y: 1 };          // Inner corner SE (tile Inner, cuadrante SE)
-                    }
-                    if (S && !E) return { x: 3, y: 4 };      // Edge E (tile SE outer, cuadrante NE)
-                    if (!S && E) return { x: 2, y: 5 };      // Edge S (tile SE outer, cuadrante SW)
-                    return { x: 3, y: 5 };                   // Corner exterior SE (tile SE outer, cuadrante SE)
-            }
-
-            return { x: 0, y: 0 };
-        }
-
-        // Obtiene el material hacia el cual transiciona un corner específico
-        // Retorna el material con menor número entre los vecinos cardinales relevantes
-        // o null si no hay transición (todos los vecinos son del mismo material)
-        function getTransitionMaterial(x, y, corner, myMaterial) {
-            let neighbors = [];
-
-            // Cada corner mira 2 vecinos cardinales + 1 diagonal
-            switch (corner) {
-                case 'NW':
-                    neighbors = [
-                        { x: x, y: y - 1 },     // N
-                        { x: x - 1, y: y }      // W
-                    ];
-                    break;
-                case 'NE':
-                    neighbors = [
-                        { x: x, y: y - 1 },     // N
-                        { x: x + 1, y: y }      // E
-                    ];
-                    break;
-                case 'SW':
-                    neighbors = [
-                        { x: x, y: y + 1 },     // S
-                        { x: x - 1, y: y }      // W
-                    ];
-                    break;
-                case 'SE':
-                    neighbors = [
-                        { x: x, y: y + 1 },     // S
-                        { x: x + 1, y: y }      // E
-                    ];
-                    break;
-            }
-
-            // Encontrar materiales vecinos diferentes al mío
-            let differentMaterials = [];
-            for (const n of neighbors) {
-                if (n.x >= 0 && n.x < gridWidth && n.y >= 0 && n.y < gridHeight) {
-                    const neighborMat = grid[n.y][n.x];
-                    if (neighborMat !== myMaterial && !differentMaterials.includes(neighborMat)) {
-                        differentMaterials.push(neighborMat);
-                    }
-                }
-            }
-
-            if (differentMaterials.length === 0) {
-                return null; // No hay transición, usar tileset puro
-            }
-
-            // Si hay múltiples materiales diferentes, elegir el de menor número (jerarquía)
-            return Math.min(...differentMaterials);
-        }
-
-        function drawTile(x, y) {
-            const matNum = grid[y][x];
-
-            const halfTile = tileSize / 2;
-            const subtileSize = 24;
-
-            const positions = {
-                NW: { dx: x * tileSize, dy: y * tileSize },
-                NE: { dx: x * tileSize + halfTile, dy: y * tileSize },
-                SW: { dx: x * tileSize, dy: y * tileSize + halfTile },
-                SE: { dx: x * tileSize + halfTile, dy: y * tileSize + halfTile }
-            };
-
-            // Dibujar cada corner con su tileset correspondiente
-            for (const corner of ['NW', 'NE', 'SW', 'SE']) {
-                // Determinar hacia qué material transiciona este corner
-                const transitionTo = getTransitionMaterial(x, y, corner, matNum);
-
-                // Seleccionar el tileset apropiado
-                let tileset = null;
-                if (transitionTo !== null && transitionTilesets[matNum] && transitionTilesets[matNum][transitionTo]) {
-                    // Usar tileset de transición
-                    tileset = transitionTilesets[matNum][transitionTo];
-                } else {
-                    // Usar tileset puro
-                    tileset = tilesets[matNum];
-                }
-
-                if (!tileset) continue;
-
-                // Calcular coordenadas del subtile
-                // Para transiciones, usamos el mismo algoritmo pero considerando
-                // como "lleno" si el vecino es del mismo material O del material de transición
-                const srcPos = getSubtileCoordsForTransition(x, y, corner, matNum, transitionTo);
-
-                ctx.drawImage(
-                    tileset,
-                    srcPos.x * subtileSize,
-                    srcPos.y * subtileSize,
-                    subtileSize,
-                    subtileSize,
-                    positions[corner].dx,
-                    positions[corner].dy,
-                    halfTile,
-                    halfTile
-                );
-            }
-        }
-
-        // Versión de getSubtileCoords que considera transiciones
-        // Un vecino se considera "lleno" si es del material actual
-        function getSubtileCoordsForTransition(x, y, corner, matNum, transitionTo) {
-            // Para el algoritmo de autotiling, un vecino está "lleno" si:
-            // - Es del mismo material que el tile actual
-            const isFilled = (nx, ny) => {
-                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) return false;
-                return grid[ny][nx] === matNum;
-            };
-
-            const N = isFilled(x, y - 1);
-            const S = isFilled(x, y + 1);
-            const E = isFilled(x + 1, y);
-            const W = isFilled(x - 1, y);
-
-            const NW_diag = isFilled(x - 1, y - 1);
-            const NE_diag = isFilled(x + 1, y - 1);
-            const SW_diag = isFilled(x - 1, y + 1);
-            const SE_diag = isFilled(x + 1, y + 1);
+            const NW_diag = isFilledInLayer(layer, x - 1, y - 1);
+            const NE_diag = isFilledInLayer(layer, x + 1, y - 1);
+            const SW_diag = isFilledInLayer(layer, x - 1, y + 1);
+            const SE_diag = isFilledInLayer(layer, x + 1, y + 1);
 
             switch (corner) {
                 case 'NW':
@@ -1005,8 +1074,71 @@
             return { x: 0, y: 0 };
         }
 
+        function seededRandom(x, y, seed = 12345) {
+            const n = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+            return n - Math.floor(n);
+        }
+
+        function drawLayerTile(layer, x, y, isBackground = false) {
+            if (!layer.tileset) return;
+            if (!isFilledInLayer(layer, x, y) && !isBackground) return;
+
+            const halfTile = tileSize / 2;
+            const subtileSize = 24;
+
+            const positions = {
+                NW: { dx: x * tileSize, dy: y * tileSize },
+                NE: { dx: x * tileSize + halfTile, dy: y * tileSize },
+                SW: { dx: x * tileSize, dy: y * tileSize + halfTile },
+                SE: { dx: x * tileSize + halfTile, dy: y * tileSize + halfTile }
+            };
+
+            if (isBackground) {
+                // El fondo siempre usa los subtiles interiores (random)
+                const interiorSubtiles = [
+                    { x: 1, y: 3 }, { x: 2, y: 3 },
+                    { x: 1, y: 4 }, { x: 2, y: 4 }
+                ];
+
+                for (const corner of ['NW', 'NE', 'SW', 'SE']) {
+                    const cornerOffset = { NW: 0, NE: 1, SW: 2, SE: 3 }[corner];
+                    const rand = seededRandom(x, y, cornerOffset * 1000);
+                    const subtile = interiorSubtiles[Math.floor(rand * interiorSubtiles.length)];
+
+                    ctx.drawImage(
+                        layer.tileset,
+                        subtile.x * subtileSize,
+                        subtile.y * subtileSize,
+                        subtileSize,
+                        subtileSize,
+                        positions[corner].dx,
+                        positions[corner].dy,
+                        halfTile,
+                        halfTile
+                    );
+                }
+            } else {
+                // Layers normales usan autotiling
+                for (const corner of ['NW', 'NE', 'SW', 'SE']) {
+                    const srcPos = getSubtileCoords(layer, x, y, corner);
+
+                    ctx.drawImage(
+                        layer.tileset,
+                        srcPos.x * subtileSize,
+                        srcPos.y * subtileSize,
+                        subtileSize,
+                        subtileSize,
+                        positions[corner].dx,
+                        positions[corner].dy,
+                        halfTile,
+                        halfTile
+                    );
+                }
+            }
+        }
+
         function render() {
-            if (!grid || grid.length === 0) return;
+            if (layers.length === 0) return;
 
             // Clear and setup transform
             ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1022,8 +1154,35 @@
             const endX = Math.min(gridWidth, Math.ceil((canvas.width - camera.x) / camera.zoom / tileSize));
             const endY = Math.min(gridHeight, Math.ceil((canvas.height - camera.y) / camera.zoom / tileSize));
 
-            // Draw grid
-            ctx.strokeStyle = '#ddd';
+            // Dibujar layers en orden (menor order = más abajo)
+            const sortedLayers = [...layers].sort((a, b) => a.order - b.order);
+
+            sortedLayers.forEach((layer, layerIndex) => {
+                if (!layer.visible || !layer.tileset) return;
+
+                // Aplicar opacity
+                ctx.globalAlpha = layer.opacity;
+
+                const isBackground = layerIndex === 0; // El primer layer es el fondo
+
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        if (isBackground) {
+                            // El fondo se dibuja en todas las celdas
+                            drawLayerTile(layer, x, y, true);
+                        } else {
+                            // Los otros layers solo donde tienen material
+                            drawLayerTile(layer, x, y, false);
+                        }
+                    }
+                }
+            });
+
+            // Reset alpha
+            ctx.globalAlpha = 1;
+
+            // Draw grid lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
             ctx.lineWidth = 0.5 / camera.zoom;
             for (let x = startX; x <= endX; x++) {
                 ctx.beginPath();
@@ -1038,26 +1197,33 @@
                 ctx.stroke();
             }
 
-            // Draw tiles (only visible ones)
-            for (let y = startY; y < endY; y++) {
-                for (let x = startX; x < endX; x++) {
-                    drawTile(x, y);
-                }
-            }
-
             // Reset transform
             ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
 
+        // ========== INPUT HANDLING ==========
+
         function handleCanvasInteraction(e) {
-            if (!grid || grid.length === 0 || isPanning) return;
+            if (layers.length === 0 || isPanning) return;
+
+            const layer = getActiveLayer();
+            if (!layer) return;
 
             const world = screenToWorld(e.clientX, e.clientY);
             const gridPos = worldToGrid(world.x, world.y);
 
             if (gridPos.x >= 0 && gridPos.x < gridWidth && gridPos.y >= 0 && gridPos.y < gridHeight) {
-                if (grid[gridPos.y][gridPos.x] !== currentMaterial) {
-                    grid[gridPos.y][gridPos.x] = currentMaterial;
+                const currentValue = layer.grid[gridPos.y][gridPos.x];
+                let newValue;
+
+                if (toolMode === 'draw') {
+                    newValue = layer.material !== null ? layer.material : 1;
+                } else {
+                    newValue = 0;
+                }
+
+                if (currentValue !== newValue) {
+                    layer.grid[gridPos.y][gridPos.x] = newValue;
                     render();
                 }
             }
@@ -1065,7 +1231,6 @@
 
         canvas.addEventListener('mousedown', (e) => {
             if (e.button === 1 || e.button === 2 || e.shiftKey) {
-                // Middle mouse or right click or shift+left = pan
                 isPanning = true;
                 canvas.classList.add('panning');
                 camera.dragStartX = e.clientX;
@@ -1074,7 +1239,6 @@
                 camera.startY = camera.y;
                 e.preventDefault();
             } else if (e.button === 0) {
-                // Left click = draw
                 isDrawing = true;
                 handleCanvasInteraction(e);
             }
@@ -1092,7 +1256,7 @@
             }
         });
 
-        canvas.addEventListener('mouseup', (e) => {
+        canvas.addEventListener('mouseup', () => {
             isDrawing = false;
             isPanning = false;
             canvas.classList.remove('panning');
@@ -1104,9 +1268,7 @@
             canvas.classList.remove('panning');
         });
 
-        canvas.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-        });
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -1115,14 +1277,12 @@
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            // World position before zoom
             const worldX = (mouseX - camera.x) / camera.zoom;
             const worldY = (mouseY - camera.y) / camera.zoom;
 
             const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.min(Math.max(camera.zoom * zoomFactor, 0.1), 5);
 
-            // Adjust camera to keep world position under mouse
             camera.x = mouseX - worldX * newZoom;
             camera.y = mouseY - worldY * newZoom;
             camera.zoom = newZoom;
@@ -1140,8 +1300,10 @@
             render();
         });
 
+        // ========== SCALE ==========
+
         function scaleTilemap() {
-            if (!grid || grid.length === 0) {
+            if (layers.length === 0) {
                 log('ERROR: No hay mapa cargado para escalar');
                 return;
             }
@@ -1155,25 +1317,29 @@
             const oldWidth = gridWidth;
             const oldHeight = gridHeight;
 
-            const h = grid.length;
-            const w = grid[0].length;
-            const out = [];
+            // Escalar cada layer
+            layers.forEach(layer => {
+                const h = layer.grid.length;
+                const w = layer.grid[0].length;
+                const out = [];
 
-            for (let y = 0; y < h; y++) {
-                for (let sy = 0; sy < scale; sy++) {
-                    const row = [];
-                    for (let x = 0; x < w; x++) {
-                        for (let sx = 0; sx < scale; sx++) {
-                            row.push(grid[y][x]);
+                for (let y = 0; y < h; y++) {
+                    for (let sy = 0; sy < scale; sy++) {
+                        const row = [];
+                        for (let x = 0; x < w; x++) {
+                            for (let sx = 0; sx < scale; sx++) {
+                                row.push(layer.grid[y][x]);
+                            }
                         }
+                        out.push(row);
                     }
-                    out.push(row);
                 }
-            }
 
-            grid = out;
-            gridWidth = w * scale;
-            gridHeight = h * scale;
+                layer.grid = out;
+            });
+
+            gridWidth = oldWidth * scale;
+            gridHeight = oldHeight * scale;
 
             log(`Tilemap escalado ${scale}x: ${oldWidth}x${oldHeight} → ${gridWidth}x${gridHeight}`);
 
@@ -1181,18 +1347,21 @@
             render();
         }
 
+        // ========== FILE INPUTS ==========
+
         document.getElementById('jsonInput').addEventListener('change', (e) => {
             if (e.target.files[0]) {
                 loadJSON(e.target.files[0]);
             }
         });
 
-        // Spritesheet handling
         document.getElementById('spritesheetInput').addEventListener('change', (e) => {
             if (e.target.files[0]) {
                 loadSpritesheet(e.target.files[0]);
             }
         });
+
+        // ========== SPRITESHEET ==========
 
         function loadSpritesheet(file) {
             const reader = new FileReader();
@@ -1203,9 +1372,8 @@
 
                     const cols = Math.floor(img.width / TILESET_WIDTH);
                     const rows = Math.floor(img.height / TILESET_HEIGHT);
-                    const totalTilesets = cols * rows;
 
-                    log(`Spritesheet cargado: ${img.width}x${img.height}px = ${cols}x${rows} tilesets (${totalTilesets} total)`);
+                    log(`Spritesheet cargado: ${img.width}x${img.height}px = ${cols}x${rows} tilesets`);
 
                     extractTilesetsFromSpritesheet(img, cols, rows);
                 };
@@ -1215,7 +1383,6 @@
         }
 
         function extractTilesetsFromSpritesheet(img, cols, rows) {
-            console.log('extractTilesetsFromSpritesheet:', cols, 'x', rows);
             spritesheetTilesets = [];
             const container = document.getElementById('spritesheetTiles');
             const previewContainer = document.getElementById('spritesheetPreview');
@@ -1224,13 +1391,11 @@
             let index = 0;
             for (let row = 0; row < rows; row++) {
                 for (let col = 0; col < cols; col++) {
-                    // Crear canvas para este tileset
                     const tilesetCanvas = document.createElement('canvas');
                     tilesetCanvas.width = TILESET_WIDTH;
                     tilesetCanvas.height = TILESET_HEIGHT;
                     const tilesetCtx = tilesetCanvas.getContext('2d');
 
-                    // Extraer el tileset del spritesheet
                     tilesetCtx.drawImage(
                         img,
                         col * TILESET_WIDTH,
@@ -1242,7 +1407,6 @@
                         TILESET_HEIGHT
                     );
 
-                    // Guardar referencia
                     spritesheetTilesets.push({
                         canvas: tilesetCanvas,
                         index: index,
@@ -1251,7 +1415,6 @@
                         assignedTo: null
                     });
 
-                    // Crear elemento visual
                     const tileDiv = document.createElement('div');
                     tileDiv.className = 'spritesheet-tile';
                     tileDiv.dataset.index = index;
@@ -1275,8 +1438,7 @@
 
                     tileDiv.onclick = (e) => {
                         const idx = parseInt(e.currentTarget.dataset.index);
-                        console.log(`Click en tileset ${idx}`);
-                        assignTilesetToMaterial(idx);
+                        assignTilesetToLayer(idx);
                     };
 
                     container.appendChild(tileDiv);
@@ -1287,97 +1449,41 @@
             previewContainer.classList.add('active');
         }
 
-        function assignTilesetToMaterial(tilesetIndex) {
-            if (materials.length === 0) {
-                log('ERROR: Primero importá un JSON con materiales');
-                return;
-            }
-
+        function assignTilesetToLayer(tilesetIndex) {
             const tileset = spritesheetTilesets[tilesetIndex];
             if (!tileset) {
                 log('ERROR: Tileset no encontrado');
                 return;
             }
 
-            // Determinar si estamos asignando a material puro o transición
-            if (currentTransition) {
-                // === Asignar a TRANSICIÓN ===
-                const { from, to } = currentTransition;
-
-                // Inicializar estructura si no existe
-                if (!transitionTilesets[from]) {
-                    transitionTilesets[from] = {};
-                }
-
-                // Asignar el tileset
-                transitionTilesets[from][to] = tileset.canvas;
-
-                // Actualizar label en spritesheet
-                const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
-                if (assignedLabel) {
-                    assignedLabel.textContent = `${from}→${to}`;
-                    assignedLabel.style.display = 'block';
-                    assignedLabel.style.background = '#e67e22';
-                }
-
-                // Actualizar preview en la lista de transiciones
-                const preview = document.getElementById(`preview-trans-${from}-${to}`);
-                if (preview) {
-                    preview.innerHTML = '';
-                    const previewCanvas = document.createElement('canvas');
-                    previewCanvas.width = TILESET_WIDTH;
-                    previewCanvas.height = TILESET_HEIGHT;
-                    previewCanvas.style.width = '100%';
-                    previewCanvas.style.height = '100%';
-                    previewCanvas.getContext('2d').drawImage(tileset.canvas, 0, 0);
-                    preview.appendChild(previewCanvas);
-                }
-
-                log(`Tileset #${tilesetIndex} asignado a transición ${from}→${to}`);
-
-            } else if (currentMaterial !== null) {
-                // === Asignar a MATERIAL PURO ===
-
-                // Asignar el tileset
-                tilesets[currentMaterial] = tileset.canvas;
-
-                // Actualizar label en spritesheet
-                const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
-                if (assignedLabel) {
-                    const matName = getMaterialName(currentMaterial);
-                    assignedLabel.textContent = matName;
-                    assignedLabel.style.display = 'block';
-                    assignedLabel.style.background = '#2ecc71';
-                }
-
-                // Actualizar preview en la lista de materiales
-                const preview = document.getElementById(`preview${currentMaterial}`);
-                if (preview) {
-                    preview.innerHTML = '';
-                    const previewCanvas = document.createElement('canvas');
-                    previewCanvas.width = TILESET_WIDTH;
-                    previewCanvas.height = TILESET_HEIGHT;
-                    previewCanvas.style.width = '100%';
-                    previewCanvas.style.height = '100%';
-                    previewCanvas.getContext('2d').drawImage(tileset.canvas, 0, 0);
-                    preview.appendChild(previewCanvas);
-                }
-
-                log(`Tileset #${tilesetIndex} asignado a material puro ${currentMaterial}`);
-
-            } else {
-                log('ERROR: Seleccioná un material o transición primero');
+            const layer = getActiveLayer();
+            if (!layer) {
+                log('ERROR: Seleccioná un layer primero');
                 return;
             }
 
+            // Asignar tileset al layer
+            layer.tileset = tileset.canvas;
+
+            // Actualizar label en spritesheet
+            const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
+            if (assignedLabel) {
+                assignedLabel.textContent = layer.name;
+                assignedLabel.style.display = 'block';
+                assignedLabel.style.background = layer.material !== null ? getMaterialColor(layer.material) : '#3498db';
+            }
+
+            log(`Tileset #${tilesetIndex} asignado a layer "${layer.name}"`);
+
+            updateLayersUI();
+            updateTilesetPreview();
             render();
         }
 
-        log('Editor iniciado');
+        // ========== INIT ==========
 
-        // Initialize canvas with default 10x10 grid
+        log('Editor iniciado - Sistema de Layers');
         initCanvas();
-        createTilesetUI(); // Create UI for default material 0
         render();
     </script>
 </body>
