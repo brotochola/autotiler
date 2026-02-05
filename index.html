@@ -574,6 +574,21 @@
                             Escala el mapa usando nearest neighbor
                         </div>
                     </div>
+
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #2c3e50;">
+                        <h4 style="margin-bottom: 10px; color: #27ae60;">📤 Exportar para Tiled</h4>
+                        <div class="control-group">
+                            <label>Nombre del spritesheet:</label>
+                            <input type="text" id="spritesheetFilename" value="spritesheet.png"
+                                style="width: 100%; padding: 5px; background: #2c3e50; border: 2px solid #3498db; border-radius: 4px; color: #ecf0f1;">
+                        </div>
+                        <button onclick="exportToTiled()" style="background: #27ae60; width: 100%;">
+                            💾 Descargar JSON (Tiled format)
+                        </button>
+                        <div style="margin-top: 5px; font-size: 11px; color: #95a5a6;">
+                            El JSON referenciará el nombre de archivo indicado arriba
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1478,6 +1493,249 @@
             updateLayersUI();
             updateTilesetPreview();
             render();
+        }
+
+        // ========== EXPORT TO TILED ==========
+
+        // Convierte coordenadas de subtile local (dentro de un tileset 96x144) a ID de tile absoluto en el spritesheet
+        // tilesetCol, tilesetRow = posición del tileset 96x144 dentro del spritesheet
+        // sx, sy = coordenadas del subtile dentro del tileset (0-3, 0-5)
+        // spritesheetCols = número de columnas de subtiles (24px) en el spritesheet completo
+        function subtileCoordsToAbsoluteTileId(tilesetCol, tilesetRow, sx, sy, spritesheetCols, firstgid) {
+            // Cada tileset tiene 4 columnas de subtiles
+            const TILESET_SUBTILE_COLS = 4;
+            const TILESET_SUBTILE_ROWS = 6;
+
+            // Posición absoluta del subtile en el spritesheet (en unidades de subtiles)
+            const absX = tilesetCol * TILESET_SUBTILE_COLS + sx;
+            const absY = tilesetRow * TILESET_SUBTILE_ROWS + sy;
+
+            // ID del tile = fila * columnas + columna + firstgid
+            return firstgid + (absY * spritesheetCols) + absX;
+        }
+
+        // Encuentra la posición del tileset en el spritesheet dado un layer
+        function getLayerTilesetPosition(layer) {
+            if (!layer.tileset) return null;
+
+            // Buscar el tileset en spritesheetTilesets
+            const tilesetInfo = spritesheetTilesets.find(t => t.canvas === layer.tileset);
+            if (tilesetInfo) {
+                return { col: tilesetInfo.col, row: tilesetInfo.row };
+            }
+            return null;
+        }
+
+        function exportToTiled() {
+            if (layers.length === 0) {
+                log('ERROR: No hay layers para exportar');
+                alert('No hay layers para exportar. Importá un JSON primero.');
+                return;
+            }
+
+            if (!spritesheetImage) {
+                log('ERROR: No hay spritesheet cargado');
+                alert('Cargá un spritesheet primero para poder exportar.');
+                return;
+            }
+
+            // Dimensiones exportadas (2x porque usamos subtiles de 24px en lugar de tiles de 48px)
+            const exportWidth = gridWidth * 2;
+            const exportHeight = gridHeight * 2;
+            const SUBTILE_SIZE = 24;
+
+            // Calcular dimensiones del spritesheet en subtiles
+            const spritesheetCols = Math.floor(spritesheetImage.width / SUBTILE_SIZE);
+            const spritesheetRows = Math.floor(spritesheetImage.height / SUBTILE_SIZE);
+            const totalTiles = spritesheetCols * spritesheetRows;
+
+            // Obtener el nombre del archivo de spritesheet del input
+            const spritesheetFilename = document.getElementById('spritesheetFilename').value || 'spritesheet.png';
+
+            // UN solo tileset que describe todo el spritesheet
+            const tilesets = [{
+                columns: spritesheetCols,
+                firstgid: 1,
+                image: spritesheetFilename,
+                imageheight: spritesheetImage.height,
+                imagewidth: spritesheetImage.width,
+                margin: 0,
+                name: "spritesheet",
+                spacing: 0,
+                tilecount: totalTiles,
+                tileheight: SUBTILE_SIZE,
+                tilewidth: SUBTILE_SIZE
+            }];
+
+            const sortedLayers = [...layers].sort((a, b) => a.order - b.order);
+
+            // Crear estructura Tiled
+            const tiledData = {
+                compressionlevel: -1,
+                height: exportHeight,
+                width: exportWidth,
+                infinite: false,
+                layers: [],
+                nextlayerid: layers.length + 1,
+                nextobjectid: 1,
+                orientation: "orthogonal",
+                renderorder: "right-down",
+                tiledversion: "1.10.2",
+                tileheight: SUBTILE_SIZE,
+                tilewidth: SUBTILE_SIZE,
+                tilesets: tilesets,
+                type: "map",
+                version: "1.10"
+            };
+
+            // Subtiles interiores para el fondo (random) - coordenadas locales dentro de un tileset
+            const interiorSubtiles = [
+                { x: 1, y: 3 }, { x: 2, y: 3 },
+                { x: 1, y: 4 }, { x: 2, y: 4 }
+            ];
+
+            const firstgid = 1;
+
+            // Convertir cada layer al formato Tiled con subtiles
+            sortedLayers.forEach((layer, layerIndex) => {
+                const isBackground = layerIndex === 0;
+                const tilesetPos = getLayerTilesetPosition(layer);
+
+                // Si el layer no tiene tileset asignado, usar posición 0,0
+                const tsCol = tilesetPos ? tilesetPos.col : 0;
+                const tsRow = tilesetPos ? tilesetPos.row : 0;
+
+                // Array de datos: exportWidth * exportHeight subtiles
+                const data = [];
+
+                // Recorrer cada tile original
+                for (let y = 0; y < gridHeight; y++) {
+                    // Fila superior de subtiles (NW, NE)
+                    for (let x = 0; x < gridWidth; x++) {
+                        const hasTile = isFilledInLayer(layer, x, y) || isBackground;
+
+                        if (hasTile && layer.tileset) {
+                            if (isBackground) {
+                                // Fondo: usar subtiles interiores random
+                                const randNW = seededRandom(x, y, 0);
+                                const subtileNW = interiorSubtiles[Math.floor(randNW * interiorSubtiles.length)];
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileNW.x, subtileNW.y, spritesheetCols, firstgid));
+                            } else {
+                                // Autotiling normal
+                                const subtileNW = getSubtileCoords(layer, x, y, 'NW');
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileNW.x, subtileNW.y, spritesheetCols, firstgid));
+                            }
+                        } else {
+                            data.push(0); // Sin tile
+                        }
+
+                        if (hasTile && layer.tileset) {
+                            if (isBackground) {
+                                const randNE = seededRandom(x, y, 1000);
+                                const subtileNE = interiorSubtiles[Math.floor(randNE * interiorSubtiles.length)];
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileNE.x, subtileNE.y, spritesheetCols, firstgid));
+                            } else {
+                                const subtileNE = getSubtileCoords(layer, x, y, 'NE');
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileNE.x, subtileNE.y, spritesheetCols, firstgid));
+                            }
+                        } else {
+                            data.push(0);
+                        }
+                    }
+
+                    // Fila inferior de subtiles (SW, SE)
+                    for (let x = 0; x < gridWidth; x++) {
+                        const hasTile = isFilledInLayer(layer, x, y) || isBackground;
+
+                        if (hasTile && layer.tileset) {
+                            if (isBackground) {
+                                const randSW = seededRandom(x, y, 2000);
+                                const subtileSW = interiorSubtiles[Math.floor(randSW * interiorSubtiles.length)];
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileSW.x, subtileSW.y, spritesheetCols, firstgid));
+                            } else {
+                                const subtileSW = getSubtileCoords(layer, x, y, 'SW');
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileSW.x, subtileSW.y, spritesheetCols, firstgid));
+                            }
+                        } else {
+                            data.push(0);
+                        }
+
+                        if (hasTile && layer.tileset) {
+                            if (isBackground) {
+                                const randSE = seededRandom(x, y, 3000);
+                                const subtileSE = interiorSubtiles[Math.floor(randSE * interiorSubtiles.length)];
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileSE.x, subtileSE.y, spritesheetCols, firstgid));
+                            } else {
+                                const subtileSE = getSubtileCoords(layer, x, y, 'SE');
+                                data.push(subtileCoordsToAbsoluteTileId(tsCol, tsRow, subtileSE.x, subtileSE.y, spritesheetCols, firstgid));
+                            }
+                        } else {
+                            data.push(0);
+                        }
+                    }
+                }
+
+                const tiledLayer = {
+                    data: data,
+                    height: exportHeight,
+                    id: layerIndex + 1,
+                    name: layer.name,
+                    opacity: layer.opacity,
+                    type: "tilelayer",
+                    visible: layer.visible,
+                    width: exportWidth,
+                    x: 0,
+                    y: 0
+                };
+
+                tiledData.layers.push(tiledLayer);
+            });
+
+            // Convertir a JSON string con formato legible
+            const jsonString = JSON.stringify(tiledData);
+
+            // Crear y descargar el archivo
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tilemap_export.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            log(`Exportado: ${exportWidth}x${exportHeight} subtiles (original: ${gridWidth}x${gridHeight}) con ${layers.length} layers`);
+            log(`El JSON referencia "${spritesheetFilename}" - asegurate de que esté en la misma carpeta`);
+        }
+
+        function downloadSpritesheet() {
+            if (!spritesheetImage) {
+                log('ERROR: No hay spritesheet cargado');
+                alert('Cargá un spritesheet primero.');
+                return;
+            }
+
+            // Crear un canvas temporal para exportar la imagen
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = spritesheetImage.width;
+            tempCanvas.height = spritesheetImage.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(spritesheetImage, 0, 0);
+
+            // Convertir a PNG y descargar
+            tempCanvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'spritesheet.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                log('Spritesheet descargado como "spritesheet.png"');
+            }, 'image/png');
         }
 
         // ========== INIT ==========
