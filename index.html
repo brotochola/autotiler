@@ -508,7 +508,16 @@
 
         <div class="import-section">
             <h2>📥 Importar Mapa JSON</h2>
-            <input type="file" id="jsonInput" accept=".json">
+            <div style="display: flex; gap: 15px; justify-content: center; align-items: center;">
+                <button onclick="document.getElementById('jsonInputFlat').click()" style="background: #3498db;">
+                    📥 Import Flat Materials
+                </button>
+                <button onclick="document.getElementById('jsonInputLayered').click()" style="background: #9b59b6;">
+                    📥 Import Layered
+                </button>
+            </div>
+            <input type="file" id="jsonInputFlat" accept=".json" style="display: none;">
+            <input type="file" id="jsonInputLayered" accept=".json" style="display: none;">
         </div>
 
         <div class="spritesheet-section">
@@ -1002,6 +1011,85 @@
             reader.readAsText(file);
         }
 
+        function loadLayeredJSON(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+
+                    if (!data.layers || !Array.isArray(data.layers) || data.layers.length === 0) {
+                        log('ERROR: JSON inválido - falta array "layers" o está vacío');
+                        return;
+                    }
+
+                    // Get grid dimensions from first layer
+                    const firstLayer = data.layers[0];
+                    if (!firstLayer.data || !Array.isArray(firstLayer.data) || firstLayer.data.length === 0) {
+                        log('ERROR: El primer layer no tiene datos válidos');
+                        return;
+                    }
+
+                    gridHeight = firstLayer.data.length;
+                    gridWidth = firstLayer.data[0].length;
+
+                    // Sort layers by materialNumber ascending (lower = bottom, higher = top)
+                    const sortedLayers = [...data.layers].sort((a, b) => a.materialNumber - b.materialNumber);
+
+                    log(`JSON layered importado: ${gridWidth}x${gridHeight} con ${sortedLayers.length} layers`);
+                    log(`Layers: ${sortedLayers.map(l => `${l.name}(${l.materialNumber})`).join(', ')}`);
+
+                    // Reset layers
+                    layers = [];
+                    nextLayerId = 1;
+                    jsonData = null; // No material definitions in layered format
+
+                    // Create a layer for each imported layer
+                    sortedLayers.forEach((importedLayer, index) => {
+                        const matNum = importedLayer.materialNumber;
+                        const grid = [];
+
+                        // Convert binary data (1 → materialNumber, 0 → 0)
+                        for (let y = 0; y < gridHeight; y++) {
+                            grid[y] = [];
+                            for (let x = 0; x < gridWidth; x++) {
+                                const value = importedLayer.data[y] && importedLayer.data[y][x] ? importedLayer.data[y][x] : 0;
+                                grid[y][x] = value === 1 ? matNum : 0;
+                            }
+                        }
+
+                        const layer = {
+                            id: nextLayerId++,
+                            name: importedLayer.name || `Layer ${matNum}`,
+                            grid: grid,
+                            material: matNum,
+                            tileset: null,
+                            visible: true,
+                            opacity: 1,
+                            order: index
+                        };
+                        layers.push(layer);
+                    });
+
+                    // Select the first layer
+                    if (layers.length > 0) {
+                        activeLayerId = layers[0].id;
+                    }
+
+                    document.getElementById('toolsSection').style.display = 'block';
+                    document.getElementById('tilesetSection').style.display = 'block';
+
+                    updateLayersUI();
+                    updateTilesetPreview();
+                    initCanvas();
+                    render();
+
+                } catch (error) {
+                    log(`ERROR al parsear JSON: ${error.message}`);
+                }
+            };
+            reader.readAsText(file);
+        }
+
         // ========== RENDERING ==========
 
         function initCanvas() {
@@ -1364,9 +1452,17 @@
 
         // ========== FILE INPUTS ==========
 
-        document.getElementById('jsonInput').addEventListener('change', (e) => {
+        document.getElementById('jsonInputFlat').addEventListener('change', (e) => {
             if (e.target.files[0]) {
                 loadJSON(e.target.files[0]);
+                e.target.value = ''; // Reset for re-import
+            }
+        });
+
+        document.getElementById('jsonInputLayered').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                loadLayeredJSON(e.target.files[0]);
+                e.target.value = ''; // Reset for re-import
             }
         });
 
