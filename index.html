@@ -656,6 +656,20 @@
         let isDrawing = false;
         let isPanning = false;
 
+        // Chrome shows a sad face when canvas exceeds ~16k pixels; cap to stay safe
+        const MAX_CANVAS_DIM = 4096;
+        let canvasScale = 1;  // scale factor when canvas is capped
+
+        let renderScheduled = false;
+        function scheduleRender() {
+            if (renderScheduled) return;
+            renderScheduled = true;
+            requestAnimationFrame(() => {
+                renderScheduled = false;
+                render();
+            });
+        }
+
         function log(msg) {
             console.log(`[AutoTiler] ${msg}`);
         }
@@ -715,6 +729,7 @@
 
         function addLayer() {
             const layer = createLayer(`Layer ${nextLayerId}`);
+            invalidateLayersCache();
             setActiveLayer(layer.id);
             updateLayersUI();
             document.getElementById('toolsSection').style.display = 'block';
@@ -732,9 +747,8 @@
             if (index !== -1) {
                 const name = layers[index].name;
                 layers.splice(index, 1);
-                // Reordenar
                 layers.forEach((l, i) => l.order = i);
-                // Si era el activo, seleccionar otro
+                invalidateLayersCache();
                 if (activeLayerId === id) {
                     activeLayerId = layers[0]?.id || null;
                 }
@@ -750,6 +764,7 @@
             if (index > 0) {
                 [layers[index], layers[index - 1]] = [layers[index - 1], layers[index]];
                 layers.forEach((l, i) => l.order = i);
+                invalidateLayersCache();
                 updateLayersUI();
                 render();
             }
@@ -760,6 +775,7 @@
             if (index < layers.length - 1) {
                 [layers[index], layers[index + 1]] = [layers[index + 1], layers[index]];
                 layers.forEach((l, i) => l.order = i);
+                invalidateLayersCache();
                 updateLayersUI();
                 render();
             }
@@ -914,6 +930,7 @@
                 const [dragged] = layers.splice(draggedIndex, 1);
                 layers.splice(targetIndex, 0, dragged);
                 layers.forEach((l, i) => l.order = i);
+                invalidateLayersCache();
                 updateLayersUI();
                 render();
             }
@@ -966,9 +983,9 @@
                     log(`JSON importado: ${gridWidth}x${gridHeight} con ${detectedMaterials.length} materiales`);
                     log(`Materiales detectados: ${detectedMaterials.join(', ')}`);
 
-                    // Reset layers
                     layers = [];
                     nextLayerId = 1;
+                    invalidateLayersCache();
 
                     // Crear layer de fondo (el primer material, usualmente 0)
                     const bgMaterial = detectedMaterials[0];
@@ -1038,10 +1055,10 @@
                     log(`JSON layered importado: ${gridWidth}x${gridHeight} con ${sortedLayers.length} layers`);
                     log(`Layers: ${sortedLayers.map(l => `${l.name}(${l.materialNumber})`).join(', ')}`);
 
-                    // Reset layers
                     layers = [];
                     nextLayerId = 1;
-                    jsonData = null; // No material definitions in layered format
+                    jsonData = null;
+                    invalidateLayersCache();
 
                     // Create a layer for each imported layer
                     sortedLayers.forEach((importedLayer, index) => {
@@ -1093,8 +1110,20 @@
         // ========== RENDERING ==========
 
         function initCanvas() {
-            canvas.width = gridWidth * tileSize;
-            canvas.height = gridHeight * tileSize;
+            const logicalWidth = gridWidth * tileSize;
+            const logicalHeight = gridHeight * tileSize;
+
+            if (logicalWidth > MAX_CANVAS_DIM || logicalHeight > MAX_CANVAS_DIM) {
+                canvasScale = Math.min(MAX_CANVAS_DIM / logicalWidth, MAX_CANVAS_DIM / logicalHeight);
+                canvas.width = Math.floor(logicalWidth * canvasScale);
+                canvas.height = Math.floor(logicalHeight * canvasScale);
+                log(`Canvas capped to ${canvas.width}x${canvas.height} (logical: ${logicalWidth}x${logicalHeight}) to avoid Chrome limit`);
+            } else {
+                canvasScale = 1;
+                canvas.width = logicalWidth;
+                canvas.height = logicalHeight;
+            }
+
             camera.x = 0;
             camera.y = 0;
             camera.zoom = 1;
@@ -1107,9 +1136,13 @@
 
         function screenToWorld(screenX, screenY) {
             const rect = canvas.getBoundingClientRect();
-            const x = (screenX - rect.left - camera.x) / camera.zoom;
-            const y = (screenY - rect.top - camera.y) / camera.zoom;
-            return { x, y };
+            const canvasX = screenX - rect.left;
+            const canvasY = screenY - rect.top;
+            const zoom = canvasScale * camera.zoom;
+            return {
+                x: (canvasX - camera.x) / zoom,
+                y: (canvasY - camera.y) / zoom
+            };
         }
 
         function worldToGrid(worldX, worldY) {
@@ -1240,6 +1273,9 @@
             }
         }
 
+        let sortedLayersCache = null;
+        function invalidateLayersCache() { sortedLayersCache = null; }
+
         function render() {
             if (layers.length === 0) return;
 
@@ -1248,17 +1284,21 @@
             ctx.fillStyle = '#f0e68c';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Apply camera transform
-            ctx.setTransform(camera.zoom, 0, 0, camera.zoom, camera.x, camera.y);
+            // Apply camera transform (include canvasScale when canvas was capped)
+            const zoom = canvasScale * camera.zoom;
+            ctx.setTransform(zoom, 0, 0, zoom, camera.x, camera.y);
 
-            // Calculate visible area
-            const startX = Math.max(0, Math.floor(-camera.x / camera.zoom / tileSize));
-            const startY = Math.max(0, Math.floor(-camera.y / camera.zoom / tileSize));
-            const endX = Math.min(gridWidth, Math.ceil((canvas.width - camera.x) / camera.zoom / tileSize));
-            const endY = Math.min(gridHeight, Math.ceil((canvas.height - camera.y) / camera.zoom / tileSize));
+            // Calculate visible area (use zoom for correct culling)
+            const startX = Math.max(0, Math.floor(-camera.x / zoom / tileSize));
+            const startY = Math.max(0, Math.floor(-camera.y / zoom / tileSize));
+            const endX = Math.min(gridWidth, Math.ceil((canvas.width - camera.x) / zoom / tileSize));
+            const endY = Math.min(gridHeight, Math.ceil((canvas.height - camera.y) / zoom / tileSize));
 
-            // Dibujar layers en orden (menor order = más abajo)
-            const sortedLayers = [...layers].sort((a, b) => a.order - b.order);
+            // Dibujar layers en orden (cache para evitar sort cada frame)
+            if (!sortedLayersCache) {
+                sortedLayersCache = [...layers].sort((a, b) => a.order - b.order);
+            }
+            const sortedLayers = sortedLayersCache;
 
             sortedLayers.forEach((layer, layerIndex) => {
                 if (!layer.visible || !layer.tileset) return;
@@ -1284,20 +1324,23 @@
             // Reset alpha
             ctx.globalAlpha = 1;
 
-            // Draw grid lines
-            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-            ctx.lineWidth = 0.5 / camera.zoom;
-            for (let x = startX; x <= endX; x++) {
-                ctx.beginPath();
-                ctx.moveTo(x * tileSize, startY * tileSize);
-                ctx.lineTo(x * tileSize, endY * tileSize);
-                ctx.stroke();
-            }
-            for (let y = startY; y <= endY; y++) {
-                ctx.beginPath();
-                ctx.moveTo(startX * tileSize, y * tileSize);
-                ctx.lineTo(endX * tileSize, y * tileSize);
-                ctx.stroke();
+            // Draw grid only when tiles are visible enough (evitar miles de líneas al hacer zoom out)
+            const tilePixelSize = tileSize * zoom;
+            if (tilePixelSize >= 4) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 0.5 / zoom;
+                for (let x = startX; x <= endX; x++) {
+                    ctx.beginPath();
+                    ctx.moveTo(x * tileSize, startY * tileSize);
+                    ctx.lineTo(x * tileSize, endY * tileSize);
+                    ctx.stroke();
+                }
+                for (let y = startY; y <= endY; y++) {
+                    ctx.beginPath();
+                    ctx.moveTo(startX * tileSize, y * tileSize);
+                    ctx.lineTo(endX * tileSize, y * tileSize);
+                    ctx.stroke();
+                }
             }
 
             // Reset transform
@@ -1353,7 +1396,7 @@
                 const dy = e.clientY - camera.dragStartY;
                 camera.x = camera.startX + dx;
                 camera.y = camera.startY + dy;
-                render();
+                scheduleRender();
             } else if (isDrawing) {
                 handleCanvasInteraction(e);
             }
@@ -1379,27 +1422,27 @@
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
+            const zoom = canvasScale * camera.zoom;
 
-            const worldX = (mouseX - camera.x) / camera.zoom;
-            const worldY = (mouseY - camera.y) / camera.zoom;
+            const worldX = (mouseX - camera.x) / zoom;
+            const worldY = (mouseY - camera.y) / zoom;
 
             const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.min(Math.max(camera.zoom * zoomFactor, 0.1), 5);
 
-            camera.x = mouseX - worldX * newZoom;
-            camera.y = mouseY - worldY * newZoom;
+            camera.x = mouseX - worldX * (canvasScale * newZoom);
+            camera.y = mouseY - worldY * (canvasScale * newZoom);
             camera.zoom = newZoom;
 
             updateZoomDisplay();
-            render();
+            scheduleRender();
         });
 
         // Tile size slider
         document.getElementById('tileSizeSlider').addEventListener('input', (e) => {
             tileSize = parseInt(e.target.value);
             document.getElementById('tileSizeDisplay').textContent = tileSize + 'px';
-            canvas.width = gridWidth * tileSize;
-            canvas.height = gridHeight * tileSize;
+            initCanvas();
             render();
         });
 
