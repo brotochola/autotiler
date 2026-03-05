@@ -135,8 +135,8 @@
         .spritesheet-tile canvas {
             width: 100%;
             height: 100%;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
+            /* image-rendering: pixelated;
+            image-rendering: crisp-edges; */
             pointer-events: none;
         }
 
@@ -610,6 +610,13 @@
                         <span id="tileSizeDisplay">48px</span> |
                         Zoom: <span id="zoomDisplay">100%</span>
                     </div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #3498db;">
+                        <label>Preview Scale:</label>
+                        <input type="range" id="previewScaleSlider" min="0.1" max="1" value="1" step="0.1">
+                        <div class="zoom-info">
+                            <span id="previewScaleDisplay">100%</span>
+                        </div>
+                    </div>
                 </div>
                 <canvas id="mapCanvas"></canvas>
             </div>
@@ -624,6 +631,10 @@
         let gridWidth = 10;
         let gridHeight = 10;
         let tileSize = 48;
+
+        // Metadata from imported layered JSON
+        let originalCellSize = 48;  // cellSizePx from metadata
+        let previewScale = 1;       // render at lower resolution for performance (0.25 = 25%)
 
         // ========== NUEVA ESTRUCTURA DE LAYERS ==========
         let layers = [];
@@ -1064,15 +1075,34 @@
                         return;
                     }
 
-                    // Get grid dimensions from first layer
-                    const firstLayer = data.layers[0];
-                    if (!firstLayer.data || !Array.isArray(firstLayer.data) || firstLayer.data.length === 0) {
-                        log('ERROR: El primer layer no tiene datos válidos');
-                        return;
-                    }
+                    // Read metadata if available
+                    if (data.metadata) {
+                        gridWidth = data.metadata.widthCells || data.layers[0].data[0].length;
+                        gridHeight = data.metadata.heightCells || data.layers[0].data.length;
+                        originalCellSize = data.metadata.cellSizePx || 48;
+                        tileSize = originalCellSize;
 
-                    gridHeight = firstLayer.data.length;
-                    gridWidth = firstLayer.data[0].length;
+                        // Update tile size slider to match
+                        const tileSizeSlider = document.getElementById('tileSizeSlider');
+                        if (tileSizeSlider) {
+                            tileSizeSlider.value = Math.min(Math.max(tileSize, 12), 96);
+                            document.getElementById('tileSizeDisplay').textContent = tileSize + 'px';
+                        }
+
+                        log(`Metadata: ${gridWidth}x${gridHeight} cells, cellSize: ${originalCellSize}px`);
+                        if (data.metadata.widthPx && data.metadata.heightPx) {
+                            log(`Image size: ${data.metadata.widthPx}x${data.metadata.heightPx}px`);
+                        }
+                    } else {
+                        // Fallback: get grid dimensions from first layer
+                        const firstLayer = data.layers[0];
+                        if (!firstLayer.data || !Array.isArray(firstLayer.data) || firstLayer.data.length === 0) {
+                            log('ERROR: El primer layer no tiene datos válidos');
+                            return;
+                        }
+                        gridHeight = firstLayer.data.length;
+                        gridWidth = firstLayer.data[0].length;
+                    }
 
                     // Sort layers by materialNumber ascending (lower = bottom, higher = top)
                     const sortedLayers = [...data.layers].sort((a, b) => a.materialNumber - b.materialNumber);
@@ -1139,15 +1169,23 @@
             const logicalWidth = gridWidth * tileSize;
             const logicalHeight = gridHeight * tileSize;
 
-            if (logicalWidth > MAX_CANVAS_DIM || logicalHeight > MAX_CANVAS_DIM) {
-                canvasScale = Math.min(MAX_CANVAS_DIM / logicalWidth, MAX_CANVAS_DIM / logicalHeight);
+            // Apply preview scale for performance
+            let scaledWidth = Math.floor(logicalWidth * previewScale);
+            let scaledHeight = Math.floor(logicalHeight * previewScale);
+
+            if (scaledWidth > MAX_CANVAS_DIM || scaledHeight > MAX_CANVAS_DIM) {
+                canvasScale = Math.min(MAX_CANVAS_DIM / scaledWidth, MAX_CANVAS_DIM / scaledHeight) * previewScale;
                 canvas.width = Math.floor(logicalWidth * canvasScale);
                 canvas.height = Math.floor(logicalHeight * canvasScale);
                 log(`Canvas capped to ${canvas.width}x${canvas.height} (logical: ${logicalWidth}x${logicalHeight}) to avoid Chrome limit`);
             } else {
-                canvasScale = 1;
-                canvas.width = logicalWidth;
-                canvas.height = logicalHeight;
+                canvasScale = previewScale;
+                canvas.width = scaledWidth;
+                canvas.height = scaledHeight;
+            }
+
+            if (previewScale < 1) {
+                log(`Preview scale: ${Math.round(previewScale * 100)}% → canvas: ${canvas.width}x${canvas.height}px`);
             }
 
             // Reset camera and CSS transform
@@ -1156,7 +1194,7 @@
             camera.zoom = 1;
             applyTransform();
             updateZoomDisplay();
-            
+
             // Invalidate all caches when canvas size changes
             invalidateAllLayerCaches();
         }
@@ -1177,9 +1215,11 @@
         }
 
         function worldToGrid(worldX, worldY) {
+            // Account for canvas scale when converting to grid coordinates
+            const scaledTileSize = tileSize * canvasScale;
             return {
-                x: Math.floor(worldX / tileSize),
-                y: Math.floor(worldY / tileSize)
+                x: Math.floor(worldX / scaledTileSize),
+                y: Math.floor(worldY / scaledTileSize)
             };
         }
 
@@ -1305,15 +1345,15 @@
         }
 
         let sortedLayersCache = null;
-        function invalidateLayersCache() { 
-            sortedLayersCache = null; 
+        function invalidateLayersCache() {
+            sortedLayersCache = null;
             invalidateAllLayerCaches();
         }
 
         // Render a single layer to its cached offscreen canvas
         function renderLayerToCache(layer, layerIndex) {
             let cache = layerCaches.get(layer.id);
-            
+
             // Create cache if doesn't exist
             if (!cache) {
                 const offscreen = document.createElement('canvas');
@@ -1322,25 +1362,25 @@
                 cache = { canvas: offscreen, dirty: true };
                 layerCaches.set(layer.id, cache);
             }
-            
+
             // Only redraw if dirty
             if (!cache.dirty) return cache.canvas;
-            
+
             const offCtx = cache.canvas.getContext('2d');
             offCtx.clearRect(0, 0, cache.canvas.width, cache.canvas.height);
-            
+
             if (!layer.tileset) {
                 cache.dirty = false;
                 return cache.canvas;
             }
-            
+
             const isBackground = layerIndex === 0;
-            
+
             // Draw all tiles for this layer
             const origCtx = ctx;
             // Temporarily use offscreen context for drawLayerTile
             const savedTileSize = tileSize;
-            
+
             for (let y = 0; y < gridHeight; y++) {
                 for (let x = 0; x < gridWidth; x++) {
                     if (isBackground) {
@@ -1350,15 +1390,15 @@
                     }
                 }
             }
-            
+
             cache.dirty = false;
             return cache.canvas;
         }
-        
+
         // Draw tile to a specific context (for caching)
         function drawLayerTileToContext(targetCtx, layer, x, y, isBackground, ts) {
             if (!layer.tileset) return;
-            
+
             const halfTile = ts / 2;
             const subtileSize = 24;
 
@@ -1431,34 +1471,34 @@
 
                 // Get or create cached layer render
                 const cachedCanvas = renderLayerToCache(layer, layerIndex);
-                
-                // Draw cached layer with opacity
+
+                // Draw cached layer with opacity, scaling to fit canvas
                 ctx.globalAlpha = layer.opacity;
-                ctx.drawImage(cachedCanvas, 0, 0);
+                ctx.drawImage(cachedCanvas, 0, 0, canvas.width, canvas.height);
             });
 
             // Reset alpha
             ctx.globalAlpha = 1;
 
-            // Draw grid (scaled down based on tile size)
-            const effectiveTileSize = tileSize * canvasScale;
-            if (effectiveTileSize >= 4) {
+            // Draw grid (scaled based on canvasScale)
+            const scaledTileSize = tileSize * canvasScale;
+            if (scaledTileSize >= 4) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.1)';
                 ctx.lineWidth = 0.5;
                 for (let x = 0; x <= gridWidth; x++) {
                     ctx.beginPath();
-                    ctx.moveTo(x * tileSize, 0);
-                    ctx.lineTo(x * tileSize, gridHeight * tileSize);
+                    ctx.moveTo(x * scaledTileSize, 0);
+                    ctx.lineTo(x * scaledTileSize, gridHeight * scaledTileSize);
                     ctx.stroke();
                 }
                 for (let y = 0; y <= gridHeight; y++) {
                     ctx.beginPath();
-                    ctx.moveTo(0, y * tileSize);
-                    ctx.lineTo(gridWidth * tileSize, y * tileSize);
+                    ctx.moveTo(0, y * scaledTileSize);
+                    ctx.lineTo(gridWidth * scaledTileSize, y * scaledTileSize);
                     ctx.stroke();
                 }
             }
-            
+
             contentCacheDirty = false;
         }
 
@@ -1537,24 +1577,24 @@
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
 
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            // Use the container's rect (not canvas) since canvas has CSS transform applied
+            const containerRect = canvas.parentElement.getBoundingClientRect();
+            const mouseX = e.clientX - containerRect.left;
+            const mouseY = e.clientY - containerRect.top;
 
-            // Calculate world position under mouse
+            // Calculate world position under mouse (before zoom)
             const worldX = (mouseX - camera.x) / camera.zoom;
             const worldY = (mouseY - camera.y) / camera.zoom;
 
             const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.min(Math.max(camera.zoom * zoomFactor, 0.1), 5);
 
-            // Adjust pan so mouse stays over same world point
+            // Adjust camera so the world point stays under the mouse after zoom
             camera.x = mouseX - worldX * newZoom;
             camera.y = mouseY - worldY * newZoom;
             camera.zoom = newZoom;
 
             updateZoomDisplay();
-            // Use CSS transform - no redraw needed!
             applyTransform();
         });
 
@@ -1563,6 +1603,16 @@
             tileSize = parseInt(e.target.value);
             document.getElementById('tileSizeDisplay').textContent = tileSize + 'px';
             // Clear all layer caches since they depend on tile size
+            layerCaches.clear();
+            initCanvas();
+            render();
+        });
+
+        // Preview scale slider
+        document.getElementById('previewScaleSlider').addEventListener('input', (e) => {
+            previewScale = parseFloat(e.target.value);
+            document.getElementById('previewScaleDisplay').textContent = Math.round(previewScale * 100) + '%';
+            // Clear all layer caches since they depend on canvas scale
             layerCaches.clear();
             initCanvas();
             render();
@@ -1742,7 +1792,7 @@
 
             // Asignar tileset al layer
             layer.tileset = tileset.canvas;
-            
+
             // Invalidate this layer's cache since tileset changed
             invalidateLayerCache(layer.id);
 
