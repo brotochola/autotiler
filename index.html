@@ -446,6 +446,7 @@
             cursor: grab;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
+            transform-origin: 0 0;
         }
 
         canvas.panning {
@@ -660,6 +661,27 @@
         const MAX_CANVAS_DIM = 4096;
         let canvasScale = 1;  // scale factor when canvas is capped
 
+        // ========== LAYER CACHING (OPTIMIZATION) ==========
+        // Each layer gets an offscreen canvas that's only redrawn when content changes
+        let layerCaches = new Map(); // layerId -> { canvas, dirty }
+        let contentCacheDirty = true; // true when any layer content changed
+
+        function invalidateLayerCache(layerId) {
+            const cache = layerCaches.get(layerId);
+            if (cache) cache.dirty = true;
+            contentCacheDirty = true;
+        }
+
+        function invalidateAllLayerCaches() {
+            layerCaches.forEach(cache => cache.dirty = true);
+            contentCacheDirty = true;
+        }
+
+        // Apply CSS transform for zoom/pan (no redraw needed!)
+        function applyTransform() {
+            canvas.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`;
+        }
+
         let renderScheduled = false;
         function scheduleRender() {
             if (renderScheduled) return;
@@ -748,6 +770,8 @@
                 const name = layers[index].name;
                 layers.splice(index, 1);
                 layers.forEach((l, i) => l.order = i);
+                // Remove cache for deleted layer
+                layerCaches.delete(id);
                 invalidateLayersCache();
                 if (activeLayerId === id) {
                     activeLayerId = layers[0]?.id || null;
@@ -985,6 +1009,7 @@
 
                     layers = [];
                     nextLayerId = 1;
+                    layerCaches.clear();
                     invalidateLayersCache();
 
                     // Crear layer de fondo (el primer material, usualmente 0)
@@ -1058,6 +1083,7 @@
                     layers = [];
                     nextLayerId = 1;
                     jsonData = null;
+                    layerCaches.clear();
                     invalidateLayersCache();
 
                     // Create a layer for each imported layer
@@ -1124,10 +1150,15 @@
                 canvas.height = logicalHeight;
             }
 
+            // Reset camera and CSS transform
             camera.x = 0;
             camera.y = 0;
             camera.zoom = 1;
+            applyTransform();
             updateZoomDisplay();
+            
+            // Invalidate all caches when canvas size changes
+            invalidateAllLayerCaches();
         }
 
         function updateZoomDisplay() {
@@ -1138,10 +1169,10 @@
             const rect = canvas.getBoundingClientRect();
             const canvasX = screenX - rect.left;
             const canvasY = screenY - rect.top;
-            const zoom = canvasScale * camera.zoom;
+            // Account for CSS transform (zoom is applied via CSS, canvas content is at 1:1)
             return {
-                x: (canvasX - camera.x) / zoom,
-                y: (canvasY - camera.y) / zoom
+                x: (canvasX - camera.x) / camera.zoom,
+                y: (canvasY - camera.y) / camera.zoom
             };
         }
 
@@ -1274,77 +1305,161 @@
         }
 
         let sortedLayersCache = null;
-        function invalidateLayersCache() { sortedLayersCache = null; }
+        function invalidateLayersCache() { 
+            sortedLayersCache = null; 
+            invalidateAllLayerCaches();
+        }
+
+        // Render a single layer to its cached offscreen canvas
+        function renderLayerToCache(layer, layerIndex) {
+            let cache = layerCaches.get(layer.id);
+            
+            // Create cache if doesn't exist
+            if (!cache) {
+                const offscreen = document.createElement('canvas');
+                offscreen.width = gridWidth * tileSize;
+                offscreen.height = gridHeight * tileSize;
+                cache = { canvas: offscreen, dirty: true };
+                layerCaches.set(layer.id, cache);
+            }
+            
+            // Only redraw if dirty
+            if (!cache.dirty) return cache.canvas;
+            
+            const offCtx = cache.canvas.getContext('2d');
+            offCtx.clearRect(0, 0, cache.canvas.width, cache.canvas.height);
+            
+            if (!layer.tileset) {
+                cache.dirty = false;
+                return cache.canvas;
+            }
+            
+            const isBackground = layerIndex === 0;
+            
+            // Draw all tiles for this layer
+            const origCtx = ctx;
+            // Temporarily use offscreen context for drawLayerTile
+            const savedTileSize = tileSize;
+            
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    if (isBackground) {
+                        drawLayerTileToContext(offCtx, layer, x, y, true, savedTileSize);
+                    } else if (isFilledInLayer(layer, x, y)) {
+                        drawLayerTileToContext(offCtx, layer, x, y, false, savedTileSize);
+                    }
+                }
+            }
+            
+            cache.dirty = false;
+            return cache.canvas;
+        }
+        
+        // Draw tile to a specific context (for caching)
+        function drawLayerTileToContext(targetCtx, layer, x, y, isBackground, ts) {
+            if (!layer.tileset) return;
+            
+            const halfTile = ts / 2;
+            const subtileSize = 24;
+
+            const positions = {
+                NW: { dx: x * ts, dy: y * ts },
+                NE: { dx: x * ts + halfTile, dy: y * ts },
+                SW: { dx: x * ts, dy: y * ts + halfTile },
+                SE: { dx: x * ts + halfTile, dy: y * ts + halfTile }
+            };
+
+            if (isBackground) {
+                const interiorSubtiles = [
+                    { x: 1, y: 3 }, { x: 2, y: 3 },
+                    { x: 1, y: 4 }, { x: 2, y: 4 }
+                ];
+
+                for (const corner of ['NW', 'NE', 'SW', 'SE']) {
+                    const cornerOffset = { NW: 0, NE: 1, SW: 2, SE: 3 }[corner];
+                    const rand = seededRandom(x, y, cornerOffset * 1000);
+                    const subtile = interiorSubtiles[Math.floor(rand * interiorSubtiles.length)];
+
+                    targetCtx.drawImage(
+                        layer.tileset,
+                        subtile.x * subtileSize,
+                        subtile.y * subtileSize,
+                        subtileSize,
+                        subtileSize,
+                        positions[corner].dx,
+                        positions[corner].dy,
+                        halfTile,
+                        halfTile
+                    );
+                }
+            } else {
+                for (const corner of ['NW', 'NE', 'SW', 'SE']) {
+                    const srcPos = getSubtileCoords(layer, x, y, corner);
+
+                    targetCtx.drawImage(
+                        layer.tileset,
+                        srcPos.x * subtileSize,
+                        srcPos.y * subtileSize,
+                        subtileSize,
+                        subtileSize,
+                        positions[corner].dx,
+                        positions[corner].dy,
+                        halfTile,
+                        halfTile
+                    );
+                }
+            }
+        }
 
         function render() {
             if (layers.length === 0) return;
 
-            // Clear and setup transform
+            // Clear canvas
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.fillStyle = '#f0e68c';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Apply camera transform (include canvasScale when canvas was capped)
-            const zoom = canvasScale * camera.zoom;
-            ctx.setTransform(zoom, 0, 0, zoom, camera.x, camera.y);
-
-            // Calculate visible area (use zoom for correct culling)
-            const startX = Math.max(0, Math.floor(-camera.x / zoom / tileSize));
-            const startY = Math.max(0, Math.floor(-camera.y / zoom / tileSize));
-            const endX = Math.min(gridWidth, Math.ceil((canvas.width - camera.x) / zoom / tileSize));
-            const endY = Math.min(gridHeight, Math.ceil((canvas.height - camera.y) / zoom / tileSize));
-
-            // Dibujar layers en orden (cache para evitar sort cada frame)
+            // Sort layers (cached)
             if (!sortedLayersCache) {
                 sortedLayersCache = [...layers].sort((a, b) => a.order - b.order);
             }
             const sortedLayers = sortedLayersCache;
 
+            // Render and composite each layer from cache
             sortedLayers.forEach((layer, layerIndex) => {
                 if (!layer.visible || !layer.tileset) return;
 
-                // Aplicar opacity
+                // Get or create cached layer render
+                const cachedCanvas = renderLayerToCache(layer, layerIndex);
+                
+                // Draw cached layer with opacity
                 ctx.globalAlpha = layer.opacity;
-
-                const isBackground = layerIndex === 0; // El primer layer es el fondo
-
-                for (let y = startY; y < endY; y++) {
-                    for (let x = startX; x < endX; x++) {
-                        if (isBackground) {
-                            // El fondo se dibuja en todas las celdas
-                            drawLayerTile(layer, x, y, true);
-                        } else {
-                            // Los otros layers solo donde tienen material
-                            drawLayerTile(layer, x, y, false);
-                        }
-                    }
-                }
+                ctx.drawImage(cachedCanvas, 0, 0);
             });
 
             // Reset alpha
             ctx.globalAlpha = 1;
 
-            // Draw grid only when tiles are visible enough (evitar miles de líneas al hacer zoom out)
-            const tilePixelSize = tileSize * zoom;
-            if (tilePixelSize >= 4) {
+            // Draw grid (scaled down based on tile size)
+            const effectiveTileSize = tileSize * canvasScale;
+            if (effectiveTileSize >= 4) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-                ctx.lineWidth = 0.5 / zoom;
-                for (let x = startX; x <= endX; x++) {
+                ctx.lineWidth = 0.5;
+                for (let x = 0; x <= gridWidth; x++) {
                     ctx.beginPath();
-                    ctx.moveTo(x * tileSize, startY * tileSize);
-                    ctx.lineTo(x * tileSize, endY * tileSize);
+                    ctx.moveTo(x * tileSize, 0);
+                    ctx.lineTo(x * tileSize, gridHeight * tileSize);
                     ctx.stroke();
                 }
-                for (let y = startY; y <= endY; y++) {
+                for (let y = 0; y <= gridHeight; y++) {
                     ctx.beginPath();
-                    ctx.moveTo(startX * tileSize, y * tileSize);
-                    ctx.lineTo(endX * tileSize, y * tileSize);
+                    ctx.moveTo(0, y * tileSize);
+                    ctx.lineTo(gridWidth * tileSize, y * tileSize);
                     ctx.stroke();
                 }
             }
-
-            // Reset transform
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            contentCacheDirty = false;
         }
 
         // ========== INPUT HANDLING ==========
@@ -1370,6 +1485,8 @@
 
                 if (currentValue !== newValue) {
                     layer.grid[gridPos.y][gridPos.x] = newValue;
+                    // Invalidate this layer's cache since content changed
+                    invalidateLayerCache(layer.id);
                     render();
                 }
             }
@@ -1396,7 +1513,8 @@
                 const dy = e.clientY - camera.dragStartY;
                 camera.x = camera.startX + dx;
                 camera.y = camera.startY + dy;
-                scheduleRender();
+                // Use CSS transform - no redraw needed!
+                applyTransform();
             } else if (isDrawing) {
                 handleCanvasInteraction(e);
             }
@@ -1422,26 +1540,30 @@
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
-            const zoom = canvasScale * camera.zoom;
 
-            const worldX = (mouseX - camera.x) / zoom;
-            const worldY = (mouseY - camera.y) / zoom;
+            // Calculate world position under mouse
+            const worldX = (mouseX - camera.x) / camera.zoom;
+            const worldY = (mouseY - camera.y) / camera.zoom;
 
             const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.min(Math.max(camera.zoom * zoomFactor, 0.1), 5);
 
-            camera.x = mouseX - worldX * (canvasScale * newZoom);
-            camera.y = mouseY - worldY * (canvasScale * newZoom);
+            // Adjust pan so mouse stays over same world point
+            camera.x = mouseX - worldX * newZoom;
+            camera.y = mouseY - worldY * newZoom;
             camera.zoom = newZoom;
 
             updateZoomDisplay();
-            scheduleRender();
+            // Use CSS transform - no redraw needed!
+            applyTransform();
         });
 
         // Tile size slider
         document.getElementById('tileSizeSlider').addEventListener('input', (e) => {
             tileSize = parseInt(e.target.value);
             document.getElementById('tileSizeDisplay').textContent = tileSize + 'px';
+            // Clear all layer caches since they depend on tile size
+            layerCaches.clear();
             initCanvas();
             render();
         });
@@ -1489,6 +1611,8 @@
 
             log(`Tilemap escalado ${scale}x: ${oldWidth}x${oldHeight} → ${gridWidth}x${gridHeight}`);
 
+            // Clear all caches since grid dimensions changed
+            layerCaches.clear();
             initCanvas();
             render();
         }
@@ -1618,6 +1742,9 @@
 
             // Asignar tileset al layer
             layer.tileset = tileset.canvas;
+            
+            // Invalidate this layer's cache since tileset changed
+            invalidateLayerCache(layer.id);
 
             // Actualizar label en spritesheet
             const assignedLabel = document.getElementById(`assigned-${tilesetIndex}`);
