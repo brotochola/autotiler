@@ -626,7 +626,29 @@
 
     <script>
         const canvas = document.getElementById('mapCanvas');
-        const ctx = canvas.getContext('2d');
+        let ctx = null;
+        let pixiRenderer = null;
+        let pixiRendererReady = null;
+
+        function initPixiRenderer() {
+            if (pixiRendererReady) return pixiRendererReady;
+
+            pixiRendererReady = import('./pixi-autotile-renderer.js')
+                .then(({ createPixiAutotileRenderer }) => createPixiAutotileRenderer({ canvas }))
+                .then((renderer) => {
+                    pixiRenderer = renderer;
+                    initCanvas();
+                    render();
+                    return renderer;
+                })
+                .catch((error) => {
+                    console.error('Pixi renderer init failed', error);
+                    log('ERROR al iniciar Pixi renderer: ' + error.message);
+                    return null;
+                });
+
+            return pixiRendererReady;
+        }
 
         let gridWidth = 10;
         let gridHeight = 10;
@@ -672,25 +694,43 @@
         const MAX_CANVAS_DIM = 4096;
         let canvasScale = 1;  // scale factor when canvas is capped
 
-        // ========== LAYER CACHING (OPTIMIZATION) ==========
-        // Each layer gets an offscreen canvas that's only redrawn when content changes
-        let layerCaches = new Map(); // layerId -> { canvas, dirty }
+        // ========== LAYER CACHE INVALIDATION ==========
+        // Keep dirtiness bookkeeping lightweight; Pixi owns the actual render buffers.
+        let layerCaches = new Map(); // layerId -> { dirty }
         let contentCacheDirty = true; // true when any layer content changed
+
+        function clearAllLayerCaches() {
+            layerCaches.clear();
+            if (pixiRenderer) pixiRenderer.markAllDirty();
+        }
+
+        function removeLayerCache(layerId) {
+            layerCaches.delete(layerId);
+            if (pixiRenderer) pixiRenderer.removeLayer(layerId);
+        }
 
         function invalidateLayerCache(layerId) {
             const cache = layerCaches.get(layerId);
-            if (cache) cache.dirty = true;
+            if (cache) {
+                cache.dirty = true;
+            } else {
+                layerCaches.set(layerId, { dirty: true });
+            }
+            if (pixiRenderer) pixiRenderer.markLayerDirty(layerId);
             contentCacheDirty = true;
         }
 
         function invalidateAllLayerCaches() {
             layerCaches.forEach(cache => cache.dirty = true);
+            if (pixiRenderer) pixiRenderer.markAllDirty();
             contentCacheDirty = true;
         }
 
-        // Apply CSS transform for zoom/pan (no redraw needed!)
         function applyTransform() {
-            canvas.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`;
+            canvas.style.transform = 'none';
+            if (!pixiRenderer) return;
+            pixiRenderer.setCamera(camera);
+            render();
         }
 
         let renderScheduled = false;
@@ -782,7 +822,7 @@
                 layers.splice(index, 1);
                 layers.forEach((l, i) => l.order = i);
                 // Remove cache for deleted layer
-                layerCaches.delete(id);
+                removeLayerCache(id);
                 invalidateLayersCache();
                 if (activeLayerId === id) {
                     activeLayerId = layers[0]?.id || null;
@@ -829,6 +869,7 @@
             const layer = getLayerById(id);
             if (layer) {
                 layer.opacity = parseFloat(opacity);
+                invalidateLayerCache(layer.id);
                 render();
             }
         }
@@ -1020,7 +1061,7 @@
 
                     layers = [];
                     nextLayerId = 1;
-                    layerCaches.clear();
+                    clearAllLayerCaches();
                     invalidateLayersCache();
 
                     // Crear layer de fondo (el primer material, usualmente 0)
@@ -1113,7 +1154,7 @@
                     layers = [];
                     nextLayerId = 1;
                     jsonData = null;
-                    layerCaches.clear();
+                    clearAllLayerCaches();
                     invalidateLayersCache();
 
                     // Create a layer for each imported layer
@@ -1169,33 +1210,39 @@
             const logicalWidth = gridWidth * tileSize;
             const logicalHeight = gridHeight * tileSize;
 
-            // Apply preview scale for performance
-            let scaledWidth = Math.floor(logicalWidth * previewScale);
-            let scaledHeight = Math.floor(logicalHeight * previewScale);
+            const scaledWidth = Math.floor(logicalWidth * previewScale);
+            const scaledHeight = Math.floor(logicalHeight * previewScale);
+
+            let targetWidth;
+            let targetHeight;
 
             if (scaledWidth > MAX_CANVAS_DIM || scaledHeight > MAX_CANVAS_DIM) {
                 canvasScale = Math.min(MAX_CANVAS_DIM / scaledWidth, MAX_CANVAS_DIM / scaledHeight) * previewScale;
-                canvas.width = Math.floor(logicalWidth * canvasScale);
-                canvas.height = Math.floor(logicalHeight * canvasScale);
-                log(`Canvas capped to ${canvas.width}x${canvas.height} (logical: ${logicalWidth}x${logicalHeight}) to avoid Chrome limit`);
+                targetWidth = Math.max(Math.floor(logicalWidth * canvasScale), 1);
+                targetHeight = Math.max(Math.floor(logicalHeight * canvasScale), 1);
+                log('Canvas capped to ' + targetWidth + 'x' + targetHeight + ' (logical: ' + logicalWidth + 'x' + logicalHeight + ') to avoid Chrome limit');
             } else {
                 canvasScale = previewScale;
-                canvas.width = scaledWidth;
-                canvas.height = scaledHeight;
+                targetWidth = Math.max(scaledWidth, 1);
+                targetHeight = Math.max(scaledHeight, 1);
+            }
+
+            if (pixiRenderer) {
+                pixiRenderer.resize({ width: targetWidth, height: targetHeight, canvasScale });
+            } else {
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
             }
 
             if (previewScale < 1) {
-                log(`Preview scale: ${Math.round(previewScale * 100)}% → canvas: ${canvas.width}x${canvas.height}px`);
+                log('Preview scale: ' + Math.round(previewScale * 100) + '% -> canvas: ' + targetWidth + 'x' + targetHeight + 'px');
             }
 
-            // Reset camera and CSS transform
             camera.x = 0;
             camera.y = 0;
             camera.zoom = 1;
             applyTransform();
             updateZoomDisplay();
-
-            // Invalidate all caches when canvas size changes
             invalidateAllLayerCaches();
         }
 
@@ -1452,52 +1499,25 @@
         }
 
         function render() {
-            if (layers.length === 0) return;
+            if (!pixiRenderer) return;
 
-            // Clear canvas
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = '#f0e68c';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Sort layers (cached)
             if (!sortedLayersCache) {
                 sortedLayersCache = [...layers].sort((a, b) => a.order - b.order);
             }
-            const sortedLayers = sortedLayersCache;
+            const sortedLayers = sortedLayersCache || [];
 
-            // Render and composite each layer from cache
-            sortedLayers.forEach((layer, layerIndex) => {
-                if (!layer.visible || !layer.tileset) return;
-
-                // Get or create cached layer render
-                const cachedCanvas = renderLayerToCache(layer, layerIndex);
-
-                // Draw cached layer with opacity, scaling to fit canvas
-                ctx.globalAlpha = layer.opacity;
-                ctx.drawImage(cachedCanvas, 0, 0, canvas.width, canvas.height);
+            pixiRenderer.setCamera(camera);
+            pixiRenderer.render({
+                layers,
+                sortedLayers,
+                gridWidth,
+                gridHeight,
+                tileSize,
+                canvasScale,
+                isFilledInLayer,
+                getSubtileCoords,
+                seededRandom,
             });
-
-            // Reset alpha
-            ctx.globalAlpha = 1;
-
-            // Draw grid (scaled based on canvasScale)
-            const scaledTileSize = tileSize * canvasScale;
-            if (scaledTileSize >= 4) {
-                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-                ctx.lineWidth = 0.5;
-                for (let x = 0; x <= gridWidth; x++) {
-                    ctx.beginPath();
-                    ctx.moveTo(x * scaledTileSize, 0);
-                    ctx.lineTo(x * scaledTileSize, gridHeight * scaledTileSize);
-                    ctx.stroke();
-                }
-                for (let y = 0; y <= gridHeight; y++) {
-                    ctx.beginPath();
-                    ctx.moveTo(0, y * scaledTileSize);
-                    ctx.lineTo(gridWidth * scaledTileSize, y * scaledTileSize);
-                    ctx.stroke();
-                }
-            }
 
             contentCacheDirty = false;
         }
@@ -1578,9 +1598,9 @@
             e.preventDefault();
 
             // Use the container's rect (not canvas) since canvas has CSS transform applied
-            const containerRect = canvas.parentElement.getBoundingClientRect();
-            const mouseX = e.clientX - containerRect.left;
-            const mouseY = e.clientY - containerRect.top;
+            const canvasRect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - canvasRect.left;
+            const mouseY = e.clientY - canvasRect.top;
 
             // Calculate world position under mouse (before zoom)
             const worldX = (mouseX - camera.x) / camera.zoom;
@@ -1603,7 +1623,7 @@
             tileSize = parseInt(e.target.value);
             document.getElementById('tileSizeDisplay').textContent = tileSize + 'px';
             // Clear all layer caches since they depend on tile size
-            layerCaches.clear();
+            clearAllLayerCaches();
             initCanvas();
             render();
         });
@@ -1613,7 +1633,7 @@
             previewScale = parseFloat(e.target.value);
             document.getElementById('previewScaleDisplay').textContent = Math.round(previewScale * 100) + '%';
             // Clear all layer caches since they depend on canvas scale
-            layerCaches.clear();
+            clearAllLayerCaches();
             initCanvas();
             render();
         });
@@ -1662,7 +1682,7 @@
             log(`Tilemap escalado ${scale}x: ${oldWidth}x${oldHeight} → ${gridWidth}x${gridHeight}`);
 
             // Clear all caches since grid dimensions changed
-            layerCaches.clear();
+            clearAllLayerCaches();
             initCanvas();
             render();
         }
@@ -2057,8 +2077,10 @@
         // ========== INIT ==========
 
         log('Editor iniciado - Sistema de Layers');
+        initPixiRenderer();
         initCanvas();
         render();
     </script>
 </body>
 </html>
+
